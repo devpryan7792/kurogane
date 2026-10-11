@@ -277,8 +277,11 @@ pub fn execution() -> Result<(), KuroganeError> {
 
     // Automated verification test hook (SPEC Task 25 & headless testing)
     if let Ok(cmdline) = fs::read_to_string("/proc/cmdline") {
-        if cmdline.contains("cartilage_test=verify_app") || cmdline.contains("kurogane_test=verify_app") {
+        if cmdline.contains("cartilage_test=verify_app")
+            || cmdline.contains("kurogane_test=verify_app")
+        {
             println!("\x1b[1;32m[TEST-PASS]\x1b[0m Appliance verification completed.");
+            println!("Cartridge verification completed for {}", config.entrypoint);
             let _ = teardown();
             unsafe {
                 libc::reboot(libc::RB_POWER_OFF);
@@ -287,11 +290,16 @@ pub fn execution() -> Result<(), KuroganeError> {
     }
 
     // Spawn unprivileged Wayland Switchboard Proxy daemon (isolated in its own process & cgroup)
-    let self_exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("/proc/self/exe"));
+    let self_exe =
+        std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("/proc/self/exe"));
     let proxy_pid = if config.compositor != "none" {
         println!("\x1b[1;34m[kurogane-init]\x1b[0m Spawning unprivileged Wayland proxy helper (UID 1000)...");
         let mut proxy_cmd = Command::new(&self_exe);
-        proxy_cmd.args(["--proxy", "/run/user/1000/wayland-0", "/run/user/1000/wayland-internal"]);
+        proxy_cmd.args([
+            "--proxy",
+            "/run/user/1000/wayland-0",
+            "/run/user/1000/wayland-internal",
+        ]);
         proxy_cmd.env("XDG_RUNTIME_DIR", "/run/user/1000");
         unsafe {
             proxy_cmd.pre_exec(|| {
@@ -321,28 +329,34 @@ pub fn execution() -> Result<(), KuroganeError> {
 
     // Determine actual binary to spawn.
     // Compositor binds explicitly to wayland-internal while client application connects to wayland-0
-    let (target_bin, target_args): (String, Vec<String>) = if let Some(comp_bin) = resolve_bin(&config.compositor) {
-        if comp_bin.ends_with("cage") {
-            let mut args = vec!["-s".to_string(), "wayland-internal".to_string(), "--".to_string(), config.entrypoint.clone()];
-            args.extend(config.args.clone());
-            (comp_bin, args)
-        } else if comp_bin.ends_with("sway") {
-            let cfg_path = "/etc/cartilage/sway.conf";
-            if Path::new(cfg_path).exists() {
-                (comp_bin, vec!["-c".to_string(), cfg_path.to_string()])
+    let (target_bin, target_args): (String, Vec<String>) =
+        if let Some(comp_bin) = resolve_bin(&config.compositor) {
+            if comp_bin.ends_with("cage") {
+                let mut args = vec![
+                    "-s".to_string(),
+                    "wayland-internal".to_string(),
+                    "--".to_string(),
+                    config.entrypoint.clone(),
+                ];
+                args.extend(config.args.clone());
+                (comp_bin, args)
+            } else if comp_bin.ends_with("sway") {
+                let cfg_path = "/etc/cartilage/sway.conf";
+                if Path::new(cfg_path).exists() {
+                    (comp_bin, vec!["-c".to_string(), cfg_path.to_string()])
+                } else {
+                    (comp_bin, vec![])
+                }
             } else {
-                (comp_bin, vec![])
+                (comp_bin, config.args.clone())
             }
+        } else if let Some(entry_bin) = resolve_bin(&config.entrypoint) {
+            (entry_bin, config.args.clone())
+        } else if Path::new("/usr/bin/true").exists() {
+            ("/usr/bin/true".to_string(), vec![])
         } else {
-            (comp_bin, config.args.clone())
-        }
-    } else if let Some(entry_bin) = resolve_bin(&config.entrypoint) {
-        (entry_bin, config.args.clone())
-    } else if Path::new("/usr/bin/true").exists() {
-        ("/usr/bin/true".to_string(), vec![])
-    } else {
-        ("true".to_string(), vec![])
-    };
+            ("true".to_string(), vec![])
+        };
 
     println!(
         "\x1b[1;34m[kurogane-init]\x1b[0m Spawning supervised child in sandboxed envelope: {} {:?}",
@@ -369,9 +383,13 @@ pub fn execution() -> Result<(), KuroganeError> {
                     match sig {
                         signals::SignalEvent::PowerOff | signals::SignalEvent::Reboot => {
                             println!("\x1b[1;33m[kurogane-init]\x1b[0m Shutdown signal received. Forwarding SIGTERM to children...");
-                            let _ = nix::sys::signal::kill(child_pid, nix::sys::signal::Signal::SIGTERM);
+                            let _ = nix::sys::signal::kill(
+                                child_pid,
+                                nix::sys::signal::Signal::SIGTERM,
+                            );
                             if let Some(ppid) = proxy_pid {
-                                let _ = nix::sys::signal::kill(ppid, nix::sys::signal::Signal::SIGTERM);
+                                let _ =
+                                    nix::sys::signal::kill(ppid, nix::sys::signal::Signal::SIGTERM);
                             }
                             break 'event_loop;
                         }
@@ -393,9 +411,7 @@ pub fn execution() -> Result<(), KuroganeError> {
         // Always drain arbitrary orphaned zombies non-blockingly
         let reaped = event_loop::EventLoop::reap_zombies();
         for (pid, _) in reaped {
-            if pid == child_pid {
-                break 'event_loop;
-            } else if Some(pid) == proxy_pid {
+            if pid == child_pid || Some(pid) == proxy_pid {
                 break 'event_loop;
             }
         }
@@ -424,7 +440,8 @@ pub fn spawn_sandboxed_appliance(
     cmd.env("SEATD_VTBOUND", "0");
 
     // Pre-allocate null-terminated CStrings before fork(2) to guarantee async-signal-safety
-    let data_c = std::ffi::CString::new(data_dir).unwrap_or_else(|_| std::ffi::CString::new("/data").unwrap());
+    let data_c = std::ffi::CString::new(data_dir)
+        .unwrap_or_else(|_| std::ffi::CString::new("/data").unwrap());
     let run_c = std::ffi::CString::new("/run/user/1000").unwrap();
     let data_ptr = data_c.as_ptr() as usize;
     let run_ptr = run_c.as_ptr() as usize;
@@ -436,7 +453,10 @@ pub fn spawn_sandboxed_appliance(
     unsafe {
         cmd.pre_exec(move || {
             // 1. Raw stack Landlock application (zero heap allocations)
-            let rw_ptrs = [data_ptr as *const libc::c_char, run_ptr as *const libc::c_char];
+            let rw_ptrs = [
+                data_ptr as *const libc::c_char,
+                run_ptr as *const libc::c_char,
+            ];
             let _ = sandbox::apply_landlock_sandbox_raw(&rw_ptrs);
 
             // 2. Raw stack Seccomp BPF installation (zero heap allocations)
@@ -465,7 +485,9 @@ pub fn spawn_sandboxed_appliance(
     Ok(nix::unistd::Pid::from_raw(child_pid))
 }
 
-pub fn deterministic_teardown(child_pid: Option<nix::unistd::Pid>) -> Result<kurogane_init::TeardownReport, KuroganeError> {
+pub fn deterministic_teardown(
+    child_pid: Option<nix::unistd::Pid>,
+) -> Result<kurogane_init::TeardownReport, KuroganeError> {
     println!("\x1b[1;33m[kurogane-init]\x1b[0m App Exited. Commencing Deterministic Teardown...");
 
     // 1. Graceful child signal & bounded termination
@@ -474,7 +496,8 @@ pub fn deterministic_teardown(child_pid: Option<nix::unistd::Pid>) -> Result<kur
         let start = std::time::Instant::now();
         while start.elapsed() < std::time::Duration::from_millis(100) {
             match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
-                Ok(nix::sys::wait::WaitStatus::Exited(_, _)) | Ok(nix::sys::wait::WaitStatus::Signaled(_, _, _)) => break,
+                Ok(nix::sys::wait::WaitStatus::Exited(_, _))
+                | Ok(nix::sys::wait::WaitStatus::Signaled(_, _, _)) => break,
                 _ => std::thread::sleep(std::time::Duration::from_millis(2)),
             }
         }
@@ -509,7 +532,9 @@ pub fn deterministic_teardown(child_pid: Option<nix::unistd::Pid>) -> Result<kur
         libc::sync();
     }
 
-    println!("\x1b[1;32m[kurogane-init]\x1b[0m Teardown complete with verified persistence guarantees.");
+    println!(
+        "\x1b[1;32m[kurogane-init]\x1b[0m Teardown complete with verified persistence guarantees."
+    );
     Ok(kurogane_init::TeardownReport {
         syncfs_clean,
         unmount_clean,

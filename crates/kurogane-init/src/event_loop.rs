@@ -41,9 +41,7 @@ impl EpollToken {
             TOKEN_SIGNAL => EpollToken::SignalFd,
             TOKEN_TIMER => EpollToken::TimerFd,
             TOKEN_WAYLAND_LISTENER => EpollToken::WaylandListener,
-            v if (v >> 32) == Self::TAG_CLIENT => {
-                EpollToken::WaylandClient((v as u32) as RawFd)
-            }
+            v if (v >> 32) == Self::TAG_CLIENT => EpollToken::WaylandClient((v as u32) as RawFd),
             v if (v >> 32) == Self::TAG_COMPOSITOR => {
                 EpollToken::WaylandCompositor((v as u32) as RawFd)
             }

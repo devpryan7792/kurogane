@@ -311,10 +311,7 @@ impl ClientSession {
     }
 
     /// Flushes outgoing queued frames, preserving SCM_RIGHTS boundaries.
-    pub fn pump_write(
-        sock: RawFd,
-        queue: &mut VecDeque<WaylandFrame>,
-    ) -> Result<(), Errno> {
+    pub fn pump_write(sock: RawFd, queue: &mut VecDeque<WaylandFrame>) -> Result<(), Errno> {
         while let Some(frame) = queue.front_mut() {
             let iov = [IoSlice::new(&frame.data)];
             let raw_fds: Vec<RawFd> = frame.fds.iter().map(|f| f.0).collect();
@@ -375,11 +372,14 @@ impl ClientSession {
                 if !self.registry_ids.contains(&new_id) {
                     self.registry_ids.push(new_id);
                 }
-                self.object_interfaces.insert(new_id, WaylandInterface::Registry);
+                self.object_interfaces
+                    .insert(new_id, WaylandInterface::Registry);
             }
             // 2. Client binds global on wl_registry: wl_registry.bind (opcode 0)
             else if self.registry_ids.contains(&frame.object_id) && frame.opcode == 0 {
-                if let Some((_name, iface_str, _version, new_id)) = parse_registry_bind_payload(&frame.data) {
+                if let Some((_name, iface_str, _version, new_id)) =
+                    parse_registry_bind_payload(&frame.data)
+                {
                     let iface = match iface_str.as_str() {
                         "wl_compositor" => WaylandInterface::Compositor,
                         "wl_subcompositor" => WaylandInterface::Subcompositor,
@@ -396,31 +396,73 @@ impl ClientSession {
             else if let Some(&parent_iface) = self.object_interfaces.get(&frame.object_id) {
                 match parent_iface {
                     WaylandInterface::Compositor if frame.opcode == 0 && frame.data.len() >= 12 => {
-                        let new_id = u32::from_ne_bytes([frame.data[8], frame.data[9], frame.data[10], frame.data[11]]);
-                        self.object_interfaces.insert(new_id, WaylandInterface::Surface);
+                        let new_id = u32::from_ne_bytes([
+                            frame.data[8],
+                            frame.data[9],
+                            frame.data[10],
+                            frame.data[11],
+                        ]);
+                        self.object_interfaces
+                            .insert(new_id, WaylandInterface::Surface);
                     }
                     WaylandInterface::Seat if frame.data.len() >= 12 => {
-                        let new_id = u32::from_ne_bytes([frame.data[8], frame.data[9], frame.data[10], frame.data[11]]);
+                        let new_id = u32::from_ne_bytes([
+                            frame.data[8],
+                            frame.data[9],
+                            frame.data[10],
+                            frame.data[11],
+                        ]);
                         match frame.opcode {
-                            0 => { self.object_interfaces.insert(new_id, WaylandInterface::Pointer); }
-                            1 => { self.object_interfaces.insert(new_id, WaylandInterface::Keyboard); }
-                            2 => { self.object_interfaces.insert(new_id, WaylandInterface::Touch); }
+                            0 => {
+                                self.object_interfaces
+                                    .insert(new_id, WaylandInterface::Pointer);
+                            }
+                            1 => {
+                                self.object_interfaces
+                                    .insert(new_id, WaylandInterface::Keyboard);
+                            }
+                            2 => {
+                                self.object_interfaces
+                                    .insert(new_id, WaylandInterface::Touch);
+                            }
                             _ => {}
                         }
                     }
                     WaylandInterface::DataDeviceManager if frame.data.len() >= 12 => {
-                        let new_id = u32::from_ne_bytes([frame.data[8], frame.data[9], frame.data[10], frame.data[11]]);
+                        let new_id = u32::from_ne_bytes([
+                            frame.data[8],
+                            frame.data[9],
+                            frame.data[10],
+                            frame.data[11],
+                        ]);
                         match frame.opcode {
-                            0 => { self.object_interfaces.insert(new_id, WaylandInterface::DataSource); }
-                            1 => { self.object_interfaces.insert(new_id, WaylandInterface::DataDevice); }
+                            0 => {
+                                self.object_interfaces
+                                    .insert(new_id, WaylandInterface::DataSource);
+                            }
+                            1 => {
+                                self.object_interfaces
+                                    .insert(new_id, WaylandInterface::DataDevice);
+                            }
                             _ => {}
                         }
                     }
                     WaylandInterface::LinuxDmabuf if frame.data.len() >= 12 => {
-                        let new_id = u32::from_ne_bytes([frame.data[8], frame.data[9], frame.data[10], frame.data[11]]);
+                        let new_id = u32::from_ne_bytes([
+                            frame.data[8],
+                            frame.data[9],
+                            frame.data[10],
+                            frame.data[11],
+                        ]);
                         match frame.opcode {
-                            1 => { self.object_interfaces.insert(new_id, WaylandInterface::LinuxBufferParams); }
-                            2 => { self.object_interfaces.insert(new_id, WaylandInterface::LinuxDmabufFeedback); }
+                            1 => {
+                                self.object_interfaces
+                                    .insert(new_id, WaylandInterface::LinuxBufferParams);
+                            }
+                            2 => {
+                                self.object_interfaces
+                                    .insert(new_id, WaylandInterface::LinuxDmabufFeedback);
+                            }
                             _ => {}
                         }
                     }
@@ -488,7 +530,9 @@ impl ClientSession {
                             frame.data[10],
                             frame.data[11],
                         ]);
-                        if let Some(pos) = self.suppressed_global_names.iter().position(|&n| n == name) {
+                        if let Some(pos) =
+                            self.suppressed_global_names.iter().position(|&n| n == name)
+                        {
                             self.suppressed_global_names.swap_remove(pos);
                             println!(
                                 "\x1b[1;33m[kurogane-proxy]\x1b[0m CENSORED global_remove for previously censored global name: {}",
@@ -500,9 +544,18 @@ impl ClientSession {
                 }
             } else if let Some(&parent_iface) = self.object_interfaces.get(&frame.object_id) {
                 // Compositor event data_offer
-                if parent_iface == WaylandInterface::DataDevice && frame.opcode == 0 && frame.data.len() >= 12 {
-                    let new_id = u32::from_ne_bytes([frame.data[8], frame.data[9], frame.data[10], frame.data[11]]);
-                    self.object_interfaces.insert(new_id, WaylandInterface::DataOffer);
+                if parent_iface == WaylandInterface::DataDevice
+                    && frame.opcode == 0
+                    && frame.data.len() >= 12
+                {
+                    let new_id = u32::from_ne_bytes([
+                        frame.data[8],
+                        frame.data[9],
+                        frame.data[10],
+                        frame.data[11],
+                    ]);
+                    self.object_interfaces
+                        .insert(new_id, WaylandInterface::DataOffer);
                 }
             }
 
@@ -606,9 +659,7 @@ mod tests {
         event.extend_from_slice(&14u32.to_ne_bytes()); // name: 14
         event.extend_from_slice(&str_len.to_ne_bytes());
         event.extend_from_slice(iface.as_bytes());
-        for _ in 0..pad_len {
-            event.push(0);
-        }
+        event.resize(event.len() + pad_len as usize, 0);
         event.extend_from_slice(&1u32.to_ne_bytes()); // version
 
         session.server_in_buf.extend_from_slice(&event);
@@ -637,17 +688,17 @@ mod tests {
     fn test_bijective_fd_mapping_prevents_desync() {
         // Frame 1: wl_surface.enter (Object ID 3, Opcode 0, Size 8) -> Takes 0 FDs
         let frame1_bytes = [
-            3, 0, 0, 0,  // object_id = 3
-            0, 0,        // opcode = 0
-            8, 0,        // size = 8 bytes
+            3, 0, 0, 0, // object_id = 3
+            0, 0, // opcode = 0
+            8, 0, // size = 8 bytes
         ];
 
         // Frame 2: wl_keyboard.keymap (Object ID 4, Opcode 0, Size 12) -> Takes 1 FD
         let frame2_bytes = [
-            4, 0, 0, 0,  // object_id = 4
-            0, 0,        // opcode = 0
-            12, 0,       // size = 12 bytes
-            1, 0, 0, 0,  // format = 1
+            4, 0, 0, 0, // object_id = 4
+            0, 0, // opcode = 0
+            12, 0, // size = 12 bytes
+            1, 0, 0, 0, // format = 1
         ];
 
         let mut in_buf = Vec::new();
@@ -656,22 +707,34 @@ mod tests {
 
         // Pipe descriptor representing keymap
         let mut pipe_fds = [-1; 2];
-        unsafe { libc::pipe(pipe_fds.as_mut_ptr()); }
+        unsafe {
+            libc::pipe(pipe_fds.as_mut_ptr());
+        }
         let mut in_fds = VecDeque::new();
         in_fds.push_back(OwnedFd::new(pipe_fds[0]));
-        unsafe { libc::close(pipe_fds[1]); }
+        unsafe {
+            libc::close(pipe_fds[1]);
+        }
 
         // Schema resolver: object 3 is Surface (0 FDs), object 4 is Keyboard (1 FD)
-        let extracted = ClientSession::extract_frames(
-            &mut in_buf,
-            &mut in_fds,
-            |id, op| {
-                if id == 4 && op == 0 { 1 } else { 0 }
-            },
-        );
+        let extracted = ClientSession::extract_frames(&mut in_buf, &mut in_fds, |id, op| {
+            if id == 4 && op == 0 {
+                1
+            } else {
+                0
+            }
+        });
 
         assert_eq!(extracted.len(), 2);
-        assert_eq!(extracted[0].fds.len(), 0, "wl_surface.enter must NOT steal the FD!");
-        assert_eq!(extracted[1].fds.len(), 1, "wl_keyboard.keymap must receive exactly 1 FD!");
+        assert_eq!(
+            extracted[0].fds.len(),
+            0,
+            "wl_surface.enter must NOT steal the FD!"
+        );
+        assert_eq!(
+            extracted[1].fds.len(),
+            1,
+            "wl_keyboard.keymap must receive exactly 1 FD!"
+        );
     }
 }

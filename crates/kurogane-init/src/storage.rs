@@ -141,7 +141,9 @@ impl StorageManager {
             }
             Err(e) => {
                 eprintln!("[storage] [ERROR] Could not execute fsck.ext4: {}", e);
-                Err(KuroganeError::HardwareError("Failed to execute fsck binary"))
+                Err(KuroganeError::HardwareError(
+                    "Failed to execute fsck binary",
+                ))
             }
         }
     }

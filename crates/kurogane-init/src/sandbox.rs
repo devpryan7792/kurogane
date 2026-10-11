@@ -198,6 +198,9 @@ impl LandlockSandbox {
 
 /// ASYNC-SIGNAL-SAFE: Zero heap allocations, zero locks, pure stack-allocated raw syscalls.
 /// Returns 0 on success, negative errno on failure.
+///
+/// # Safety
+/// The caller must ensure that `rw_paths` contains valid pointers to null-terminated C strings.
 #[inline]
 pub unsafe fn apply_landlock_sandbox_raw(rw_paths: &[*const libc::c_char]) -> i32 {
     let handled = LANDLOCK_ACCESS_FS_EXECUTE
@@ -220,7 +223,7 @@ pub unsafe fn apply_landlock_sandbox_raw(rw_paths: &[*const libc::c_char]) -> i3
     }
 
     // 1. Read-only access to root "/"
-    let root_path = b"/\0".as_ptr() as *const libc::c_char;
+    let root_path = c"/".as_ptr();
     let root_fd = libc::open(root_path, libc::O_PATH | libc::O_CLOEXEC);
     if root_fd >= 0 {
         let rule = LandlockPathBeneathAttr {

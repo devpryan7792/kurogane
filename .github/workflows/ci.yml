@@ -101,12 +101,12 @@ jobs:
 
       - name: Run CLI Contract Verification
         run: |
-          chmod +x scripts/15_test_cartilage_cli.sh
+          chmod +x ./kurogane ./cartilage scripts/15_test_cartilage_cli.sh
           ./scripts/15_test_cartilage_cli.sh
 
       - name: Run User Namespace & Seccomp Harness
         run: |
-          chmod +x tests/verification/test_userns_containment.sh
+          chmod +x tests/verification/test_landlock_sandbox.sh
           chmod +x tests/verification/test_seccomp_confinement.sh
-          ./tests/verification/test_userns_containment.sh
+          ./tests/verification/test_landlock_sandbox.sh
           ./tests/verification/test_seccomp_confinement.sh

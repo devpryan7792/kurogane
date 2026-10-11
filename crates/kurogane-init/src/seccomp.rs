@@ -157,6 +157,9 @@ pub fn apply_seccomp_filter(filter: &[sock_filter]) -> Result<(), KuroganeError>
 }
 
 /// ASYNC-SIGNAL-SAFE: Installs a pre-compiled raw BPF filter. Zero heap allocations.
+///
+/// # Safety
+/// The caller must ensure that `filter` contains a valid, well-formed BPF program.
 #[inline]
 pub unsafe fn apply_seccomp_filter_raw(filter: &[sock_filter]) -> i32 {
     let ret = prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);

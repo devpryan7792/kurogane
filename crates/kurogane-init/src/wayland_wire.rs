@@ -107,7 +107,10 @@ impl<const MAX_FDS: usize> AncillaryFdBuffer<MAX_FDS> {
     }
 
     #[inline]
-    pub fn extend_from_slice(&mut self, slice: &[std::os::unix::io::RawFd]) -> Result<(), KuroganeError> {
+    pub fn extend_from_slice(
+        &mut self,
+        slice: &[std::os::unix::io::RawFd],
+    ) -> Result<(), KuroganeError> {
         if self.len + slice.len() > MAX_FDS {
             return Err(KuroganeError::WaylandProxyError(
                 "Ancillary FD buffer overflow on extend",
@@ -563,12 +566,14 @@ mod tests {
             assert!(reject_err.is_err());
 
             // Auto-apply policy must apply seals and succeed
-            let report_sealed = inspect_and_enforce_fd(fd, BufferSealPolicy::AutoApplySeals).unwrap();
+            let report_sealed =
+                inspect_and_enforce_fd(fd, BufferSealPolicy::AutoApplySeals).unwrap();
             assert_eq!(report_sealed.fd_type, FdType::SharedMemory);
             assert!(report_sealed.is_sealed);
 
             // Now reject policy must succeed because seals are active!
-            let report_now_ok = inspect_and_enforce_fd(fd, BufferSealPolicy::RejectUnsealed).unwrap();
+            let report_now_ok =
+                inspect_and_enforce_fd(fd, BufferSealPolicy::RejectUnsealed).unwrap();
             assert!(report_now_ok.is_sealed);
 
             unsafe { libc::close(fd) };
