@@ -69,6 +69,8 @@ def run_appliance(
     compositor: Optional[str] = None,
     accel: bool = False,
     force_software_render: bool = False,
+    verify_verity: bool = False,
+    enforce_seals: bool = False,
 ) -> int:
 
     """Launch an appliance in QEMU based on recipe or image."""
@@ -260,6 +262,22 @@ def run_appliance(
         if force_software_render:
             cmdline_parts.append("cartilage_software_render=1")
             cmdline_parts.append("WLR_RENDERER=pixman")
+        if verify_verity:
+            verity_json_path = cartridge_img + ".verity.json"
+            if os.path.isfile(verity_json_path):
+                import json
+                try:
+                    with open(verity_json_path, "r", encoding="utf-8") as f:
+                        v_data = json.load(f)
+                        if "root_hash" in v_data:
+                            cmdline_parts.append(f"kurogane.verity={v_data['root_hash']}")
+                            print(f"[kurogane run] Enforcing dm-verity root hash: {v_data['root_hash']}")
+                except Exception as e:
+                    print(f"[kurogane run] [WARN] Failed reading verity manifest: {e}")
+            else:
+                cmdline_parts.append("kurogane.verity=enforce")
+        if enforce_seals:
+            cmdline_parts.append("kurogane.seals=enforce")
         if test_mode:
             if not extra_cmdline or "cartilage_test=" not in extra_cmdline:
                 cmdline_parts.append("cartilage_test=verify_app")

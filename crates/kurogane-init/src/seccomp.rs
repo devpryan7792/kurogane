@@ -156,6 +156,28 @@ pub fn apply_seccomp_filter(filter: &[sock_filter]) -> Result<(), KuroganeError>
     Ok(())
 }
 
+/// ASYNC-SIGNAL-SAFE: Installs a pre-compiled raw BPF filter. Zero heap allocations.
+#[inline]
+pub unsafe fn apply_seccomp_filter_raw(filter: &[sock_filter]) -> i32 {
+    let ret = prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+    if ret != 0 {
+        return ret;
+    }
+
+    let prog = sock_fprog {
+        len: filter.len() as u16,
+        filter: filter.as_ptr() as *mut sock_filter,
+    };
+
+    prctl(
+        PR_SET_SECCOMP,
+        SECCOMP_MODE_FILTER,
+        &prog as *const sock_fprog as *const c_void,
+        0,
+        0,
+    )
+}
+
 /// Applies standard Kurogane appliance security confinement policy.
 pub fn apply_appliance_confinement() -> Result<(), KuroganeError> {
     let filter = compile_bpf_filter(BANNED_SYSCALLS);

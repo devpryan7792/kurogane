@@ -51,6 +51,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             compositor=getattr(args, "compositor", None),
             accel=getattr(args, "accel", False),
             force_software_render=getattr(args, "force_software_render", False),
+            verify_verity=getattr(args, "verify_verity", False),
+            enforce_seals=getattr(args, "enforce_seals", False),
         )
     except Exception as e:
         print(f"[kurogane run] Error: {e}", file=sys.stderr)
@@ -163,6 +165,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_run.add_argument("-v", "--verbose", action="store_true", help="Print guest serial console logs directly to terminal")
     p_run.add_argument("--accel", "--virgl", dest="accel", action="store_true", help="Enable hardware 3D graphics acceleration (VirGL) in QEMU")
     p_run.add_argument("--force-software-render", action="store_true", help="Force Pixman CPU software rendering fallback (WLR_RENDERER=pixman)")
+    p_run.add_argument("--verify-verity", action="store_true", help="Enforce dm-verity Merkle tree root hash verification in kernel command line")
+    p_run.add_argument("--enforce-seals", action="store_true", help="Enforce strict memory buffer sealing (reject unsealed memfds)")
 
     # 4. compose
     p_comp = subparsers.add_parser("compose", help="Compose multiple arcade boards into a multi-boot UEFI disk")

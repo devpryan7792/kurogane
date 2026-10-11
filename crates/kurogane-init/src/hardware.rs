@@ -130,13 +130,13 @@ impl DrmManager {
     /// Initializes `seatd` daemon and input arbitration.
     pub fn init_seat() -> Result<(), KuroganeError> {
         let seat_sock = Path::new("/run/seatd.sock");
-        if !seat_sock.exists() {
+        if !seat_sock.exists() && unsafe { libc::geteuid() == 0 } {
             let _ = Command::new("seatd")
                 .arg("-u")
                 .arg("1000")
                 .arg("-g")
                 .arg("1000")
-                .status();
+                .spawn();
         }
         std::env::set_var("SEATD_VTBOUND", "0");
         Ok(())
@@ -144,16 +144,18 @@ impl DrmManager {
 
     /// Primary entry point for State 3: Hardware Arbitration.
     pub fn arbitrate_hardware() -> Result<RendererChoice, KuroganeError> {
-        // Coldplug hardware devices via udev
-        let _ = Command::new("systemd-udevd").arg("--daemon").status();
-        let _ = Command::new("udevadm")
-            .arg("trigger")
-            .arg("--action=add")
-            .status();
-        let _ = Command::new("udevadm")
-            .arg("settle")
-            .arg("--timeout=3")
-            .status();
+        // Coldplug hardware devices via udev only if running as root (PID 1) and udev not already managing
+        if unsafe { libc::geteuid() == 0 } && !Path::new("/run/udev/control").exists() {
+            let _ = Command::new("systemd-udevd").arg("--daemon").status();
+            let _ = Command::new("udevadm")
+                .arg("trigger")
+                .arg("--action=add")
+                .status();
+            let _ = Command::new("udevadm")
+                .arg("settle")
+                .arg("--timeout=3")
+                .status();
+        }
 
         // Interrogate DRM & select rendering strategy
         let choice = Self::interrogate_drm();

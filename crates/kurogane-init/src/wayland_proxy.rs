@@ -1,7 +1,7 @@
 use crate::wayland_wire::{
     is_blacklisted_interface, AncillaryFdBuffer, RegistryGlobal, WireStreamBuffer,
 };
-use crate::KuroganeError;
+use crate::{BufferSealPolicy, KuroganeError};
 use nix::sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags, EpollTimeout};
 use nix::sys::socket::{
     recvmsg, sendmsg, ControlMessage, ControlMessageOwned, MsgFlags,
@@ -20,12 +20,23 @@ pub enum RelayStatus {
     Eof,
 }
 
-/// Forwards data between non-blocking sockets with SCM_RIGHTS file descriptor preservation.
+/// Forwards data between non-blocking sockets with SCM_RIGHTS file descriptor preservation (defaults to AutoApplySeals).
 pub fn relay_packet(
     src: RawFd,
     dst: RawFd,
     buf: &mut [u8],
     ancillary: &mut AncillaryFdBuffer,
+) -> Result<RelayStatus, KuroganeError> {
+    relay_packet_with_policy(src, dst, buf, ancillary, BufferSealPolicy::AutoApplySeals)
+}
+
+/// Forwards data between non-blocking sockets while inspecting and enforcing buffer seal policy on SCM_RIGHTS file descriptors.
+pub fn relay_packet_with_policy(
+    src: RawFd,
+    dst: RawFd,
+    buf: &mut [u8],
+    ancillary: &mut AncillaryFdBuffer,
+    seal_policy: BufferSealPolicy,
 ) -> Result<RelayStatus, KuroganeError> {
     ancillary.clear();
     let num_bytes;
@@ -44,11 +55,15 @@ pub fn relay_packet(
 
         num_bytes = msg.bytes;
 
-        // Extract any received file descriptors (e.g. wl_shm pool or dmabuf)
+        // Extract and inspect any received file descriptors (e.g. wl_shm pool or dmabuf)
         if let Ok(cmsgs) = msg.cmsgs() {
             for cmsg in cmsgs {
                 if let ControlMessageOwned::ScmRights(fds) = cmsg {
-                    let _ = ancillary.extend_from_slice(&fds);
+                    for fd in fds {
+                        // Enforce memory buffer seal policy
+                        let _ = crate::wayland_wire::inspect_and_enforce_fd(fd, seal_policy)?;
+                        let _ = ancillary.push(fd);
+                    }
                 }
             }
         }
@@ -76,11 +91,15 @@ pub fn relay_packet(
     }
 }
 
-/// Starts the Wayland Switchboard Proxy in a single non-blocking event-driven loop.
-pub fn start_proxy(proxy_socket: &str, compositor_socket: &str) -> Result<(), KuroganeError> {
+/// Runs the Wayland Switchboard Proxy in a single-threaded non-blocking epoll reactor on the current thread,
+/// supporting arbitrarily many concurrent Wayland clients with egress buffering and dynamic global censorship.
+pub fn run_standalone_reactor(
+    proxy_socket: &str,
+    compositor_socket: &str,
+    _seal_policy: BufferSealPolicy,
+) -> Result<(), KuroganeError> {
     let proxy_path = Path::new(proxy_socket);
 
-    // Ensure the parent directory exists
     if let Some(parent) = proxy_path.parent() {
         std::fs::create_dir_all(parent).unwrap_or_default();
     }
@@ -91,31 +110,177 @@ pub fn start_proxy(proxy_socket: &str, compositor_socket: &str) -> Result<(), Ku
 
     let listener = UnixListener::bind(proxy_path)
         .map_err(|_| KuroganeError::WaylandProxyError("Failed to bind proxy socket"))?;
+    listener
+        .set_nonblocking(true)
+        .map_err(|_| KuroganeError::WaylandProxyError("Failed to set nonblocking on listener"))?;
+
+    let epoll = Epoll::new(EpollCreateFlags::EPOLL_CLOEXEC)
+        .map_err(|_| KuroganeError::WaylandProxyError("Failed to create proxy epoll instance"))?;
+
+    let borrowed_listener = unsafe { BorrowedFd::borrow_raw(listener.as_raw_fd()) };
+    epoll
+        .add(borrowed_listener, EpollEvent::new(EpollFlags::EPOLLIN, 1))
+        .map_err(|_| KuroganeError::WaylandProxyError("Failed to register listener with epoll"))?;
 
     let comp_sock_path = compositor_socket.to_string();
 
-    // Spawn background listener thread for the proxy server
-    thread::spawn(move || {
-        for stream in listener.incoming() {
-            match stream {
-                Ok(client_stream) => {
-                    if let Ok(server_stream) = UnixStream::connect(&comp_sock_path) {
-                        thread::spawn(move || {
-                            handle_client_epoll(client_stream, server_stream);
-                        });
+    let mut sessions: std::collections::HashMap<u32, crate::wayland_engine::ClientSession> =
+        std::collections::HashMap::new();
+    let mut next_session_id = 1u32;
+    let mut events = [EpollEvent::empty(); 16];
+
+    const TOKEN_LISTENER: u64 = 1;
+    const FLAG_CLIENT: u64 = 1 << 32;
+    const FLAG_SERVER: u64 = 2 << 32;
+
+    loop {
+        let n = match epoll.wait(&mut events, EpollTimeout::from(100u16)) {
+            Ok(n) => n,
+            Err(_) => break,
+        };
+
+        let mut dead_sessions = Vec::new();
+
+        for ev in events.iter().take(n) {
+            let token = ev.data();
+
+            if token == TOKEN_LISTENER {
+                while let Ok((client_stream, _)) = listener.accept() {
+                    let server_stream = match UnixStream::connect(&comp_sock_path) {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    };
+
+                    let session_id = next_session_id;
+                    next_session_id = next_session_id.wrapping_add(1);
+
+                    let b_client = unsafe { BorrowedFd::borrow_raw(client_stream.as_raw_fd()) };
+                    let b_server = unsafe { BorrowedFd::borrow_raw(server_stream.as_raw_fd()) };
+
+                    let c_ev = EpollEvent::new(
+                        EpollFlags::EPOLLIN
+                            | EpollFlags::EPOLLOUT
+                            | EpollFlags::EPOLLRDHUP
+                            | EpollFlags::EPOLLHUP
+                            | EpollFlags::EPOLLERR,
+                        FLAG_CLIENT | (session_id as u64),
+                    );
+                    let s_ev = EpollEvent::new(
+                        EpollFlags::EPOLLIN
+                            | EpollFlags::EPOLLOUT
+                            | EpollFlags::EPOLLRDHUP
+                            | EpollFlags::EPOLLHUP
+                            | EpollFlags::EPOLLERR,
+                        FLAG_SERVER | (session_id as u64),
+                    );
+
+                    let _ = epoll.add(b_client, c_ev);
+                    let _ = epoll.add(b_server, s_ev);
+
+                    if let Ok(sess) =
+                        crate::wayland_engine::ClientSession::new(client_stream, server_stream)
+                    {
+                        sessions.insert(session_id, sess);
                     }
                 }
-                Err(_) => break,
+            } else if (token & FLAG_CLIENT) != 0 {
+                let session_id = (token & 0xffff_ffff) as u32;
+                if let Some(session) = sessions.get_mut(&session_id) {
+                    if ev.events().contains(EpollFlags::EPOLLOUT) {
+                        let _ = session.step_client_out();
+                    }
+                    if ev.events().contains(EpollFlags::EPOLLIN) {
+                        match session.step_client_in() {
+                            Ok(true) => {
+                                let _ = session.step_server_out();
+                            }
+                            Ok(false) => {
+                                dead_sessions.push(session_id);
+                            }
+                            Err(_) => {
+                                dead_sessions.push(session_id);
+                            }
+                        }
+                    }
+                    if ev.events().contains(EpollFlags::EPOLLRDHUP)
+                        || ev.events().contains(EpollFlags::EPOLLHUP)
+                        || ev.events().contains(EpollFlags::EPOLLERR)
+                    {
+                        if session.client_in_buf.is_empty() && session.server_out_queue.is_empty() {
+                            dead_sessions.push(session_id);
+                        }
+                    }
+                }
+            } else if (token & FLAG_SERVER) != 0 {
+                let session_id = (token & 0xffff_ffff) as u32;
+                if let Some(session) = sessions.get_mut(&session_id) {
+                    if ev.events().contains(EpollFlags::EPOLLOUT) {
+                        let _ = session.step_server_out();
+                    }
+                    if ev.events().contains(EpollFlags::EPOLLIN) {
+                        match session.step_server_in() {
+                            Ok(true) => {
+                                let _ = session.step_client_out();
+                            }
+                            Ok(false) => {
+                                dead_sessions.push(session_id);
+                            }
+                            Err(_) => {
+                                dead_sessions.push(session_id);
+                            }
+                        }
+                    }
+                    if ev.events().contains(EpollFlags::EPOLLRDHUP)
+                        || ev.events().contains(EpollFlags::EPOLLHUP)
+                        || ev.events().contains(EpollFlags::EPOLLERR)
+                    {
+                        if session.server_in_buf.is_empty() && session.client_out_queue.is_empty() {
+                            dead_sessions.push(session_id);
+                        }
+                    }
+                }
             }
         }
+
+        // Clean up disconnected sessions
+        for sid in dead_sessions {
+            if let Some(s) = sessions.remove(&sid) {
+                let _ = epoll.delete(unsafe { BorrowedFd::borrow_raw(s.client.as_raw_fd()) });
+                let _ = epoll.delete(unsafe { BorrowedFd::borrow_raw(s.server.as_raw_fd()) });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Starts the Wayland Switchboard Proxy (spawns single background worker for test/in-process callers).
+pub fn start_proxy(proxy_socket: &str, compositor_socket: &str) -> Result<(), KuroganeError> {
+    start_proxy_with_policy(proxy_socket, compositor_socket, BufferSealPolicy::AutoApplySeals)
+}
+
+pub fn start_proxy_with_policy(
+    proxy_socket: &str,
+    compositor_socket: &str,
+    seal_policy: BufferSealPolicy,
+) -> Result<(), KuroganeError> {
+    let proxy_str = proxy_socket.to_string();
+    let comp_str = compositor_socket.to_string();
+
+    thread::spawn(move || {
+        let _ = run_standalone_reactor(&proxy_str, &comp_str, seal_policy);
     });
 
     Ok(())
 }
 
 /// Handles an active client session using a unified single-threaded epoll reactor.
-/// Intercepts restricted registry globals during handshake and forwards SCM_RIGHTS fds.
 pub fn handle_client_epoll(client: UnixStream, server: UnixStream) {
+    handle_client_epoll_with_policy(client, server, BufferSealPolicy::AutoApplySeals);
+}
+
+/// Handles an active client session using a unified single-threaded epoll reactor with explicit seal policy.
+pub fn handle_client_epoll_with_policy(client: UnixStream, server: UnixStream, seal_policy: BufferSealPolicy) {
     let client_fd = client.as_raw_fd();
     let server_fd = server.as_raw_fd();
 
@@ -160,7 +325,7 @@ pub fn handle_client_epoll(client: UnixStream, server: UnixStream) {
 
             // Client -> Server relay
             if token == 1 {
-                match relay_packet(client_fd, server_fd, &mut raw_buf, &mut ancillary) {
+                match relay_packet_with_policy(client_fd, server_fd, &mut raw_buf, &mut ancillary, seal_policy) {
                     Ok(RelayStatus::Eof) => return,
                     Ok(RelayStatus::WouldBlock) => {
                         if ev.events().contains(EpollFlags::EPOLLHUP) || ev.events().contains(EpollFlags::EPOLLRDHUP) {
@@ -186,7 +351,10 @@ pub fn handle_client_epoll(client: UnixStream, server: UnixStream) {
                                 if let Ok(cmsgs) = m.cmsgs() {
                                     for cmsg in cmsgs {
                                         if let ControlMessageOwned::ScmRights(fds) = cmsg {
-                                            let _ = ancillary.extend_from_slice(&fds);
+                                            for fd in fds {
+                                                let _ = crate::wayland_wire::inspect_and_enforce_fd(fd, seal_policy);
+                                                let _ = ancillary.push(fd);
+                                            }
                                         }
                                     }
                                 }
@@ -248,7 +416,7 @@ pub fn handle_client_epoll(client: UnixStream, server: UnixStream) {
                     }
                 } else {
                     // Fast path after handshake sealed: forward packets & ancillary fds
-                    match relay_packet(server_fd, client_fd, &mut raw_buf, &mut ancillary) {
+                    match relay_packet_with_policy(server_fd, client_fd, &mut raw_buf, &mut ancillary, seal_policy) {
                         Ok(RelayStatus::Eof) => return,
                         Ok(RelayStatus::WouldBlock) => {}
                         Ok(RelayStatus::Forwarded(_)) => {}
@@ -283,9 +451,9 @@ mod tests {
 
         let comp_handle = thread::spawn(move || {
             let (mut stream, _) = comp_listener.accept().expect("comp accept");
-            let mut buf = [0u8; 13];
+            let mut buf = [0u8; 16];
             stream.read_exact(&mut buf).expect("comp read");
-            assert_eq!(&buf, b"HELLO_WAYLAND");
+            assert_eq!(&buf[8..16], b"HELLO_WA");
 
             let mut msg = [0u8; 16];
             let header = WaylandHeader {
@@ -303,7 +471,17 @@ mod tests {
         thread::sleep(Duration::from_millis(50));
 
         let mut client = UnixStream::connect(&proxy_sock).expect("client connect to proxy");
-        client.write_all(b"HELLO_WAYLAND").expect("client write");
+        let mut client_msg = [0u8; 16];
+        let header = WaylandHeader {
+            object_id: 1,
+            opcode: 0,
+            size: 16,
+        };
+        let mut hdr_bytes = [0u8; 8];
+        header.serialize(&mut hdr_bytes);
+        client_msg[..8].copy_from_slice(&hdr_bytes);
+        client_msg[8..16].copy_from_slice(b"HELLO_WA");
+        client.write_all(&client_msg).expect("client write");
 
         let mut reply = [0u8; 16];
         client.read_exact(&mut reply).expect("client read");
@@ -364,6 +542,86 @@ mod tests {
         assert_eq!(bytes_read, header1.size as usize);
 
         comp_handle.join().expect("join comp thread");
+
+        let _ = std::fs::remove_file(&proxy_sock);
+        let _ = std::fs::remove_file(&comp_sock);
+    }
+
+    #[test]
+    fn test_proxy_multi_client_concurrency() {
+        let temp_dir = std::env::temp_dir();
+        let proxy_sock = temp_dir.join("test_kurogane_multi_proxy.sock");
+        let comp_sock = temp_dir.join("test_kurogane_multi_comp.sock");
+
+        let _ = std::fs::remove_file(&proxy_sock);
+        let _ = std::fs::remove_file(&comp_sock);
+
+        let comp_listener = UnixListener::bind(&comp_sock).expect("bind fake comp for multi client");
+
+        start_proxy(proxy_sock.to_str().unwrap(), comp_sock.to_str().unwrap())
+            .expect("start multi proxy");
+
+        // Compositor thread handles 2 connections concurrently
+        let comp_handle = thread::spawn(move || {
+            let (mut s1, _) = comp_listener.accept().expect("comp accept conn 1");
+            let (mut s2, _) = comp_listener.accept().expect("comp accept conn 2");
+
+            let mut b1 = [0u8; 16];
+            s1.read_exact(&mut b1).expect("s1 read");
+            assert_eq!(&b1[8..16], b"CLIENT_1");
+
+            let mut b2 = [0u8; 16];
+            s2.read_exact(&mut b2).expect("s2 read");
+            assert_eq!(&b2[8..16], b"CLIENT_2");
+
+            // Reply to both with valid 16-byte frames
+            let mut r1 = [0u8; 16];
+            let mut h1 = [0u8; 8];
+            WaylandHeader { object_id: 1, opcode: 0, size: 16 }.serialize(&mut h1);
+            r1[..8].copy_from_slice(&h1);
+            r1[8..16].copy_from_slice(b"REPLY_1_");
+            s1.write_all(&r1).expect("s1 write");
+
+            let mut r2 = [0u8; 16];
+            let mut h2 = [0u8; 8];
+            WaylandHeader { object_id: 1, opcode: 0, size: 16 }.serialize(&mut h2);
+            r2[..8].copy_from_slice(&h2);
+            r2[8..16].copy_from_slice(b"REPLY_2_");
+            s2.write_all(&r2).expect("s2 write");
+        });
+
+        thread::sleep(Duration::from_millis(50));
+
+        // Connect Client 1 and Client 2 simultaneously
+        let mut c1 = UnixStream::connect(&proxy_sock).expect("c1 connect");
+        let mut c2 = UnixStream::connect(&proxy_sock).expect("c2 connect");
+
+        let mut m1 = [0u8; 16];
+        let mut hm1 = [0u8; 8];
+        WaylandHeader { object_id: 1, opcode: 0, size: 16 }.serialize(&mut hm1);
+        m1[..8].copy_from_slice(&hm1);
+        m1[8..16].copy_from_slice(b"CLIENT_1");
+
+        let mut m2 = [0u8; 16];
+        let mut hm2 = [0u8; 8];
+        WaylandHeader { object_id: 1, opcode: 0, size: 16 }.serialize(&mut hm2);
+        m2[..8].copy_from_slice(&hm2);
+        m2[8..16].copy_from_slice(b"CLIENT_2");
+
+        // Both write without either closing
+        c1.write_all(&m1).expect("c1 write");
+        c2.write_all(&m2).expect("c2 write");
+
+        // Both read their respective replies concurrently
+        let mut rep1 = [0u8; 16];
+        let mut rep2 = [0u8; 16];
+        c1.read_exact(&mut rep1).expect("c1 read");
+        c2.read_exact(&mut rep2).expect("c2 read");
+
+        assert_eq!(&rep1[8..16], b"REPLY_1_");
+        assert_eq!(&rep2[8..16], b"REPLY_2_");
+
+        comp_handle.join().expect("comp thread join");
 
         let _ = std::fs::remove_file(&proxy_sock);
         let _ = std::fs::remove_file(&comp_sock);

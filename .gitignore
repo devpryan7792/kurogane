@@ -3,6 +3,7 @@ build/*.img
 build/*.raw
 build/*.iso
 build/*.deb
+build/*.json
 build/cache/
 build/pacman_db/
 *.img

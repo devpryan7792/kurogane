@@ -161,4 +161,18 @@ proptest! {
         let _ = RegistryGlobal::parse(&random_bytes);
         let _ = parse_wayland_string(&random_bytes, offset);
     }
+
+    /// Invariant 8: Buffer Seal Policy Determinism.
+    /// Non-socket raw descriptor probes must never crash or panic regardless of policy.
+    #[test]
+    fn test_buffer_seal_policy_fuzz_safety(
+        raw_fd in -100i32..100i32,
+    ) {
+        use kurogane_init::BufferSealPolicy;
+        use kurogane_init::wayland_wire::inspect_and_enforce_fd;
+
+        let _ = inspect_and_enforce_fd(raw_fd, BufferSealPolicy::Disabled);
+        let _ = inspect_and_enforce_fd(raw_fd, BufferSealPolicy::RejectUnsealed);
+        let _ = inspect_and_enforce_fd(raw_fd, BufferSealPolicy::AutoApplySeals);
+    }
 }

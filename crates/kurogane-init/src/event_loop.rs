@@ -22,16 +22,16 @@ pub enum EpollToken {
 }
 
 impl EpollToken {
-    pub const CLIENT_BASE: u64 = 1000;
-    pub const COMPOSITOR_BASE: u64 = 2000;
+    pub const TAG_CLIENT: u64 = 4;
+    pub const TAG_COMPOSITOR: u64 = 5;
 
     pub fn to_u64(self) -> u64 {
         match self {
             EpollToken::SignalFd => TOKEN_SIGNAL,
             EpollToken::TimerFd => TOKEN_TIMER,
             EpollToken::WaylandListener => TOKEN_WAYLAND_LISTENER,
-            EpollToken::WaylandClient(fd) => Self::CLIENT_BASE + (fd as u64),
-            EpollToken::WaylandCompositor(fd) => Self::COMPOSITOR_BASE + (fd as u64),
+            EpollToken::WaylandClient(fd) => (Self::TAG_CLIENT << 32) | (fd as u32 as u64),
+            EpollToken::WaylandCompositor(fd) => (Self::TAG_COMPOSITOR << 32) | (fd as u32 as u64),
             EpollToken::Custom(val) => val,
         }
     }
@@ -41,11 +41,11 @@ impl EpollToken {
             TOKEN_SIGNAL => EpollToken::SignalFd,
             TOKEN_TIMER => EpollToken::TimerFd,
             TOKEN_WAYLAND_LISTENER => EpollToken::WaylandListener,
-            v if v >= Self::CLIENT_BASE && v < Self::COMPOSITOR_BASE => {
-                EpollToken::WaylandClient((v - Self::CLIENT_BASE) as RawFd)
+            v if (v >> 32) == Self::TAG_CLIENT => {
+                EpollToken::WaylandClient((v as u32) as RawFd)
             }
-            v if v >= Self::COMPOSITOR_BASE && v < Self::COMPOSITOR_BASE + 1000 => {
-                EpollToken::WaylandCompositor((v - Self::COMPOSITOR_BASE) as RawFd)
+            v if (v >> 32) == Self::TAG_COMPOSITOR => {
+                EpollToken::WaylandCompositor((v as u32) as RawFd)
             }
             other => EpollToken::Custom(other),
         }
@@ -174,8 +174,11 @@ mod tests {
             EpollToken::WaylandListener,
             EpollToken::WaylandClient(5),
             EpollToken::WaylandClient(42),
+            EpollToken::WaylandClient(1050),
+            EpollToken::WaylandClient(65535),
             EpollToken::WaylandCompositor(7),
             EpollToken::WaylandCompositor(99),
+            EpollToken::WaylandCompositor(1050),
             EpollToken::Custom(9999),
         ];
 

@@ -148,8 +148,8 @@ This document outlines the evolutionary phases of Cartilage OS, tracking complet
 - [ ] **Week 6 (Object ID Coherency & State Tracking)**:
   - Implement stateful object ID translation table to prevent client desynchronization on filtered interfaces.
   - Ensure client requests for non-advertised globals cleanly return protocol errors or are silently dropped without socket termination.
-- [ ] **Week 7 (Zero-Copy Handshake Handoff & Security Benchmarking)**:
-  - Detect completion of registry bind phase; seal the state machine and transition client/compositor sockets to zero-copy `splice()` pipe relays.
+- [ ] **Week 7 (Message-Bound Relay & Security Benchmarking)**:
+  - Detect completion of registry bind phase; seal the state machine and transition sockets to non-blocking epoll message-bound relays with SCM_RIGHTS preservation.
   - Benchmark proxy forwarding latency (target: <15 µs overhead on Wayland render loop).
 
 ### Milestone 3: Defense-in-Depth Confinement (Seccomp-BPF + Landlock) [Weeks 8–10]

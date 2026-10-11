@@ -229,10 +229,10 @@ Pass = Client `wl_registry` query returns standard interfaces but omits screenco
 
 ---
 
-### Task 20 — Wayland Object ID Coherency & `splice()` Handoff
+### Task 20 — Wayland Object ID Coherency & Non-Blocking Reactor
 **Done when:**
 - Proxy tracks active interface object ID bindings to preserve numerical stream coherency.
-- Sealing handshake: upon initial registry bind completion, proxy transitions sockets to zero-copy kernel `splice(2)` pipe relay.
+- Sealing handshake: upon initial registry bind completion, proxy executes message-bound non-blocking epoll relay preserving all SCM_RIGHTS file descriptors.
 - Throughput overhead of proxy relay is measured at <15 µs per frame.
 
 **Test command:**

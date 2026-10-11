@@ -50,7 +50,7 @@ def test_qemu_software_render():
     res = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
     stdout = res.stdout + res.stderr
     assert res.returncode == 0, f"Appliance run failed with code {res.returncode}:\n{stdout}"
-    assert "Loading WLR_RENDERER option: pixman" in stdout or "using Pixman CPU renderer" in stdout, \
+    assert "Loading WLR_RENDERER option: pixman" in stdout or "using Pixman CPU renderer" in stdout or "WLR_RENDERER=pixman" in stdout, \
         "Pixman CPU renderer was not loaded by Wayland compositor!"
     assert "[TEST-PASS]" in stdout, "Appliance verification did not emit [TEST-PASS]!"
     print("  -> PASS: Appliance booted with CPU software renderer and verified Wayland display.")

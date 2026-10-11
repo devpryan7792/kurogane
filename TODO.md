@@ -54,9 +54,9 @@ This document is the operational checklist for Kurogane v3.x. When you return fo
 - [x] Verify clients attempting to bind non-advertised globals receive clean errors or are dropped without socket collapse.
 - [x] **Verification**: Unit test querying filtered registry bindings.
 
-### Sprint 2.4 (Week 7: Zero-Copy Handshake Handoff)
+### Sprint 2.4 (Week 7: High-Throughput Handshake Handoff)
 - [x] Detect completion of initial handshake/bind phase; seal the parser.
-- [x] Transition sockets cleanly to zero-copy `nix::fcntl::splice` kernel pipe forwarding.
+- [x] Transition sockets cleanly to non-blocking epoll message-bound forwarding with full SCM_RIGHTS preservation.
 - [x] Benchmark render loop overhead; verify <15 µs proxy latency (Measured: 11.89 µs).
 - [x] **Verification**: `python3 tests/verification/test_wayland_handoff_bench.py` (Task 18 & 20 verified).
 

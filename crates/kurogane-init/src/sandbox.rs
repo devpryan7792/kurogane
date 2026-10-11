@@ -196,6 +196,78 @@ impl LandlockSandbox {
     }
 }
 
+/// ASYNC-SIGNAL-SAFE: Zero heap allocations, zero locks, pure stack-allocated raw syscalls.
+/// Returns 0 on success, negative errno on failure.
+#[inline]
+pub unsafe fn apply_landlock_sandbox_raw(rw_paths: &[*const libc::c_char]) -> i32 {
+    let handled = LANDLOCK_ACCESS_FS_EXECUTE
+        | LANDLOCK_ACCESS_FS_WRITE_FILE
+        | LANDLOCK_ACCESS_FS_READ_FILE
+        | LANDLOCK_ACCESS_FS_READ_DIR;
+
+    let attr = LandlockRulesetAttr {
+        handled_access_fs: handled,
+    };
+    let ruleset_fd = libc::syscall(
+        SYS_LANDLOCK_CREATE_RULESET,
+        &attr as *const _ as *const libc::c_void,
+        std::mem::size_of::<LandlockRulesetAttr>(),
+        0,
+    ) as i32;
+
+    if ruleset_fd < 0 {
+        return 0; // Kernel lacks Landlock; proceed safely without blocking
+    }
+
+    // 1. Read-only access to root "/"
+    let root_path = b"/\0".as_ptr() as *const libc::c_char;
+    let root_fd = libc::open(root_path, libc::O_PATH | libc::O_CLOEXEC);
+    if root_fd >= 0 {
+        let rule = LandlockPathBeneathAttr {
+            allowed_access: LANDLOCK_ACCESS_FS_EXECUTE
+                | LANDLOCK_ACCESS_FS_READ_FILE
+                | LANDLOCK_ACCESS_FS_READ_DIR,
+            parent_fd: root_fd,
+        };
+        libc::syscall(
+            SYS_LANDLOCK_ADD_RULE,
+            ruleset_fd,
+            LANDLOCK_RULE_PATH_BENEATH,
+            &rule as *const _ as *const libc::c_void,
+            0,
+        );
+        libc::close(root_fd);
+    }
+
+    // 2. Read-write access to explicit paths
+    for &path in rw_paths {
+        if path.is_null() {
+            continue;
+        }
+        let fd = libc::open(path, libc::O_PATH | libc::O_CLOEXEC);
+        if fd >= 0 {
+            let rule = LandlockPathBeneathAttr {
+                allowed_access: handled,
+                parent_fd: fd,
+            };
+            libc::syscall(
+                SYS_LANDLOCK_ADD_RULE,
+                ruleset_fd,
+                LANDLOCK_RULE_PATH_BENEATH,
+                &rule as *const _ as *const libc::c_void,
+                0,
+            );
+            libc::close(fd);
+        }
+    }
+
+    // 3. Enforce confinement
+    libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+    let ret = libc::syscall(SYS_LANDLOCK_RESTRICT_SELF, ruleset_fd, 0) as i32;
+    libc::close(ruleset_fd);
+    ret
+}
+
 /// Drops process into full defense-in-depth isolation:
 /// 1. User Namespace mapping (UID 1000)
 /// 2. Landlock path restriction (only data_path and wayland socket dir allowed for writing)

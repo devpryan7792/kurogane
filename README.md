@@ -11,8 +11,8 @@
 </p>
 
 <h3 align="center">
-  Arcade boards for operating systems.<br>
-  Instant-on, declarative, immutable appliances that boot in seconds.
+  A static Rust micro-supervisor and immutable appliance engine.<br>
+  Sub-2s bootable Linux appliances for dedicated workstations, kiosks, and embedded silicon.
 </h3>
 
 <p align="center">
@@ -22,29 +22,21 @@
 
 ---
 
-## The Manifesto: Why Operating Systems Must Become Appliances
+## Design Motivation: Immutable Appliances for Dedicated Systems
 
-### The Broken Status Quo
-Modern desktop operating systems have degenerated into sprawling, 20-gigabyte mutable state machines. Booting a standard Windows 11 or Ubuntu desktop on everyday hardware is an exercise in agony: spinning platters and budget flash drives thrash for minutes before drawing a cursor; over 80 background surveillance and telemetry daemons awaken to phone home; and 3 to 4 gigabytes of memory vanish before the user launches a single program.
+### The Challenge of Mutable System Drift
+General-purpose operating system distributions are built around open-ended, mutable state machines. Package updates, dynamic system configuration edits in `/etc`, unmanaged background services, and complex init frameworks (such as systemd) frequently introduce non-deterministic state drift, security attack surfaces, and unbounded shutdown latencies.
 
-This relentless bloat has transformed millions of perfectly capable dual-core and quad-core machines with 2GB–4GB of RAM into artificial electronic landfill. Operating systems were meant to serve software, not monopolize silicon.
+For single-purpose systems—such as air-gapped developer terminals, POS kiosks, offline educational hardware, industrial displays, and secure appliances—this complexity is an anti-pattern. An appliance should do exactly one job with deterministic latency, minimal memory overhead, and provable immutability.
 
-### The Kurogane Solution
-An operating system does not need to be an open-ended, decaying swamp of background daemons, systemd targets, and dynamic registries. **It should be an appliance.**
+### The Kurogane Architecture
+KUROGANE compiles application workloads into self-contained, read-only **EROFS compressed appliances**. A single shared Linux 6.12+ kernel boots directly into a statically linked Rust micro-supervisor (`kurogane-init`):
 
-Just like sliding a dedicated arcade board into a cabinet (JAMMA / Neo Geo MVS), your computer should do exactly one thing with uncompromising speed and precision. KUROGANE compiles software into self-contained, read-only **EROFS arcade boards**. A single shared Linux 6.12+ kernel hosts any number of declarative arcade boards on a single bootable drive:
-
-- **Instant Cold Boot**: From UEFI power-on to active GUI in **1.8 to 4.5 seconds** (~1.8s Alpine, ~3.5s Arch).
-- **Featherweight Footprint**: Base appliance running in as little as **57.6 MB of idle RAM** and **44.6 MB on disk**.
-- **Pure Rust Micro-Supervisor (`kurogane-init`)**: Zero shell scripts in PID 1. A static, memory-safe 453 KB micro-supervisor running a single-threaded `epoll(7)` event core with sub-3ms instant teardown.
-- **Zero System Daemons**: No GNOME/KDE shells, no systemd, no Polkit, and no PulseAudio/PipeWire daemons. Direct hardware execution via kernel DRM/KMS and universal ALSA `dmix` hardware audio multiplexing.
-
-### The "Play Without Fear" Principle
-In KUROGANE OS, the root filesystem is 100% read-only EROFS. It cannot be corrupted, modified by malware, or degraded by rogue configuration drift.
-
-> [!IMPORTANT]
-> **Zero Fear of Failure**:
-> Kids, students, and hackers can experiment aggressively. Run `rm -rf --no-preserve-root /` as root, kill critical processes, or physically rip the USB drive from the port mid-write. **You cannot brick the machine.** Every single boot starts factory-fresh from identical immutable blocks. All persistent user documents, code repositories, and dotfiles are strictly routed to an isolated ext4 partition mounted at `/data` with transactional journaling (`data=journal`).
+- **Sub-2s Cold Boot**: From UEFI kernel initialization to active GUI in **1.8 to 3.5 seconds**.
+- **Minimal Resource Footprint**: Base terminal appliance operates in **~57.6 MB of idle RAM** and **44.6 MB rootfs**.
+- **Static Rust Micro-Supervisor (`kurogane-init`)**: A stripped 453 KB static binary replacing PID 1. Implements a strictly single-threaded `epoll(7)` event core dedicated to `signalfd(2)` signal dispatch and non-blocking `waitpid` orphan reaping.
+- **Decoupled Security Boundaries**: All graphics proxying runs in an unprivileged child process (UID 1000) under cgroups v2, strictly isolated from the PID 1 supervisor core. Appliances are confined via Landlock LSM and Seccomp-BPF filters.
+- **Crash-Consistent Storage**: Persistent data is routed to an ext4 volume mounted with `data=journal`, validated via automated pre-mount `fsck.ext4` integrity replay with strict corruption error escalation.
 
 ---
 
@@ -57,7 +49,7 @@ In KUROGANE OS, the root filesystem is 100% read-only EROFS. It cannot be corrup
 |  [ USER APPLIANCE / WORKSPACE ]       Foot Terminal, Chromium, MPV, Labwc         |
 |         │                                                                         |
 |         ▼                                                                         |
-|  [ STATEFUL WAYLAND SWITCHBOARD PROXY ]   Zero-Copy splice(2) Relay (<15µs)       |
+|  [ DECOUPLED WAYLAND PROXY (UID 1000) ]  Non-Blocking epoll(7) Proxy (<20µs)      |
 |                                           Protocol Filter (Excises Screencopy)    |
 |         │                                                                         |
 |         ▼                                                                         |
@@ -69,12 +61,12 @@ In KUROGANE OS, the root filesystem is 100% read-only EROFS. It cannot be corrup
 |         ▼                                                                         |
 |  [ ZERO-THREAD EVENT CORE (PID 1) ]       Single-Thread epoll(7) + signalfd(2)    |
 |                                           Non-Blocking waitpid Zombie Reaper      |
-|                                           Instant Teardown SLA (<3ms)             |
+|                                           Synchronous VFS Teardown (syncfs)       |
 |         │                                                                         |
 |  +──────┴───────────────+─────────────────────────+─────────────────────────────+ |
 |  │ Storage Controller   │ Hardware & DRM Manager  │ Audio Multiplexer           │ |
 |  │ ext4 data=journal    │ Multi-GPU DRM / Pixman  │ ALSA dmix (Direct Kernel)   │ |
-|  │ Pre-mount fsck <2ms  │ seatd (SEATD_VTBOUND=0) │ Zero sound daemons          │ |
+|  │ Strict fsck <2ms     │ seatd (SEATD_VTBOUND=0) │ Zero sound daemons          │ |
 |  +──────────────────────+─────────────────────────+─────────────────────────────+ |
 |                                                                                   |
 |  [ LINUX KERNEL 6.12+ (KMS / DRM / VFS / CGROUPS V2 / NETWORKING) ]               |
@@ -83,27 +75,28 @@ In KUROGANE OS, the root filesystem is 100% read-only EROFS. It cannot be corrup
 +-----------------------------------------------------------------------------------+
 ```
 
-### Pillar 1: The Zero-Thread Event Core (`kurogane-init`)
+### Pillar 1: The Event-Driven Supervisor Core (`kurogane-init`)
 * **Single-Threaded Reactor**: PID 1 uses a unified `epoll(7)` loop multiplexing non-blocking `signalfd(2)` signal streams and `timerfd(2)` watchdogs. Zero thread synchronization locks, zero context-switch overhead, and zero signal race conditions.
-* **$O(1)$ Non-Blocking Zombie Reaping**: Reaps reparented orphaned child processes asynchronously via `waitpid(-1, WNOHANG)` upon receiving `SIGCHLD`.
-* **Instant Teardown (<15ms Dirty-Flush SLA)**: Flushes persistent storage via in-kernel `syncfs(2)` with active dirty buffer validation, detaches tmpfs overlays via `umount2(MNT_DETACH)`, and releases loop devices in **~0.016 ms** baseline syncfs flush (well within the 15.00 ms SLA even under dirty-write load).
+* **Non-Blocking Zombie Reaping**: Reaps reparented orphaned child processes asynchronously via `waitpid(-1, WNOHANG)` upon receiving `SIGCHLD`.
+* **Deterministic Two-Phase Teardown**: Signals the supervised appliance with `SIGTERM`, enforces a 100ms bounded drain, reaps all descendant zombies, executes verified in-kernel `syncfs(2)` flush, cleanly unmounts `/data`, and issues a hardware sync barrier with sub-3ms average latency on physical NVMe silicon.
 
-### Pillar 2: Stateful Wayland Wire Inspector & SCM_RIGHTS Relay
-* **Wire Protocol Security**: Sits between the untrusted appliance (`/run/user/1000/wayland-0`) and the private Wayland compositor (`wayland-internal`).
-* **Capability Stripping**: Parses 8-byte Wayland wire framing headers in real time. Dynamically intercepts and excises privileged global interfaces (`wlr_screencopy_v1`, `zwp_virtual_keyboard_v1`), making silent screen recording and keystroke injection impossible.
-* **Ancillary FD Passing & Non-Blocking Relay**: Preserves Wayland buffer file descriptors (`wl_shm`, `linux_dmabuf`, keymaps) using `recvmsg`/`sendmsg` with zero-allocation `cmsg` buffer arrays (`AncillaryFdBuffer`), delivering non-blocking event-driven forwarding with **~15 µs** transfer latency (< 25 µs SLA).
+### Pillar 2: Decoupled Multi-Client Wayland Switchboard Proxy
+* **Blast Radius Isolation**: Ejected completely from PID 1 into a dedicated unprivileged helper process (UID 1000). If the proxy crashes or encounters an OOM event, PID 1 reaps it cleanly without causing a kernel panic.
+* **Bijective SCM_RIGHTS FD Mapping**: Decodes Wayland protocol interface signatures, guaranteeing that ancillary file descriptors (`wl_shm` pools, keymaps) are mapped 1:1 to their exact frames without cross-message desync.
+* **Symmetric Capability Stripping**: Parses Wayland wire framing headers in real time, suppressing unauthorized global interfaces (`wlr_screencopy_v1`, `zwp_virtual_keyboard_v1`) and their corresponding `global_remove` events so client UI toolkits never assert on unknown names.
 
-### Pillar 3: Defense-in-Depth Confinement
-* **Seccomp-BPF Hardening**: Enforces an explicit ~55-call graphical syscall whitelist. Any attempt to invoke dangerous attack vectors (`ptrace`, `bpf`, `io_uring`, `reboot`, `keyctl`) triggers immediate kernel process termination (`SECCOMP_RET_KILL_PROCESS`, exit code 159 / SIGSYS).
-* **Landlock LSM Sandboxing**: Path-based access control restricts the entire root filesystem and system binaries (`/`, `/usr`) to read-only traverse/execute. Write, truncate, and make-node permissions are strictly confined to `/data`.
+### Pillar 3: Pre-Exec Defense-in-Depth Confinement
+* **Async-Signal-Safe Pre-Exec Sandboxing**: Installed in the child process via `Command::pre_exec` using stack-allocated structures and raw direct syscalls (zero heap allocations, zero allocator lock hazards).
+* **Seccomp-BPF Hardening**: Blocks dangerous attack surfaces (`ptrace`, `bpf`, `io_uring`, `reboot`, `keyctl`) via kernel-level process termination (`SECCOMP_RET_KILL_PROCESS`, exit code 159 / SIGSYS).
+* **Landlock LSM Sandboxing**: Path-based access control restricts system binaries (`/`, `/usr`) to read-only traverse/execute. Write, truncate, and make-node permissions are strictly confined to `/data` and `/run/user/1000`.
 * **Rootless User Namespace**: Unprivileged user namespace mapping (`CLONE_NEWUSER`) locks execution to UID 1000 with zero host root privileges.
-* **Glass Box Memory Governor**: Uses Cgroups v2 `memory.max` capped at 800MB (`838860800` bytes), guaranteeing that runaway heap allocations or malloc bombs never destabilize the supervisor or display server.
+* **Cgroups v2 Memory Governor**: Attaches child processes to `/sys/fs/cgroup/kurogane/cgroup.procs` with `memory.max` capped at 800MB, preventing rogue memory allocations from starving the supervisor.
 
 ### Pillar 4: Power-Loss Atomicity & Crash Consistency
 * **Transactional Journaling (`data=journal`)**: Persistent user volume `/data` is formatted and mounted with ext4 `data=journal`, writing both metadata commits and file payloads to the journal ring before acknowledgment.
-* **Pre-Mount Journal Replay (`fsck.ext4 -p`)**: Micro-supervisor automatically inspects the superblock and executes clean pre-mount journal replay in **1.22 ms** (< 100 ms SLA).
-* **20-Cycle Power-Cut Resilience**: Verified against 20 consecutive hard power-cut (`kill -9`) chaos cycles during sustained high-frequency writes—yielding **20/20 clean recoveries with 0 filesystem corruption errors**.
-* **RAM Overlay Fallback**: If physical storage is absent or damaged, automatically falls back to an in-memory OverlayFS on `/data`.
+* **Pre-Mount Integrity Escalation (`fsck.ext4 -p`)**: Micro-supervisor automatically inspects the superblock and executes clean pre-mount journal replay before mounting. Unresolved corruption (exit codes $\ge 4$) triggers immediate mount abortion, refusing to mount damaged filesystems into the kernel VFS.
+* **Synchronous Flush & Unmount**: Verified two-phase teardown ensures dirty page writeback completion before kernel shutdown.
+* **RAM Overlay Fallback**: If physical storage is absent or damaged, automatically falls back to an in-memory tmpfs quota on `/data`.
 
 ### Pillar 5: Bare-Metal Silicon & Multi-GPU Arbitration
 * **Multi-GPU DRM Interrogation**: Scans `/dev/dri/card0..2` and maps PCI vendor IDs (`0x8086` Intel, `0x1002` AMD, `0x10de` Nvidia, `0x1af4` VirtIO).

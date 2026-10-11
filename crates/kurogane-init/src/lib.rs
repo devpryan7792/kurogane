@@ -5,6 +5,7 @@ pub mod seccomp;
 pub mod signals;
 pub mod storage;
 pub mod timer;
+pub mod wayland_engine;
 pub mod wayland_proxy;
 pub mod wayland_wire;
 
@@ -16,6 +17,11 @@ pub enum KuroganeError {
     HardwareError(&'static str),
     WaylandProxyError(&'static str),
     TeardownError(&'static str),
+    VerityVerificationError(String),
+    MemfdSealError(&'static str),
+    WireFramingError(&'static str),
+    SandboxError(&'static str),
+    StorageError(String),
 }
 
 impl PartialEq for KuroganeError {
@@ -28,9 +34,74 @@ impl PartialEq for KuroganeError {
             (Self::HardwareError(s1), Self::HardwareError(s2)) => s1 == s2,
             (Self::WaylandProxyError(s1), Self::WaylandProxyError(s2)) => s1 == s2,
             (Self::TeardownError(s1), Self::TeardownError(s2)) => s1 == s2,
+            (Self::VerityVerificationError(s1), Self::VerityVerificationError(s2)) => s1 == s2,
+            (Self::MemfdSealError(s1), Self::MemfdSealError(s2)) => s1 == s2,
+            (Self::WireFramingError(s1), Self::WireFramingError(s2)) => s1 == s2,
+            (Self::SandboxError(s1), Self::SandboxError(s2)) => s1 == s2,
+            (Self::StorageError(s1), Self::StorageError(s2)) => s1 == s2,
             _ => false,
         }
     }
+}
+
+/// Unique session identifier for concurrent Wayland client connections.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SessionId(pub u64);
+
+/// Structured metrics report generated upon supervisor teardown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeardownReport {
+    pub syncfs_clean: bool,
+    pub unmount_clean: bool,
+    pub reaped_zombies: usize,
+}
+
+/// Declarative sandboxing policy configuration for appliances.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SandboxConfig {
+    pub uid: u32,
+    pub gid: u32,
+    pub allowed_rw_paths: Vec<String>,
+    pub memory_limit_mb: u64,
+}
+
+/// Cryptographic dm-verity block verification configuration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerityConfig {
+    pub data_device: std::path::PathBuf,
+    pub hash_device: std::path::PathBuf,
+    pub root_hash: String,
+    pub data_block_size: u32,
+    pub hash_block_size: u32,
+    pub data_blocks: u64,
+    pub salt: String,
+}
+
+impl VerityConfig {
+    pub fn new<P: Into<std::path::PathBuf>>(data_device: P, root_hash: impl Into<String>) -> Self {
+        let data_path = data_device.into();
+        let hash_path = data_path.clone();
+        Self {
+            data_device: data_path,
+            hash_device: hash_path,
+            root_hash: root_hash.into(),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            data_blocks: 0,
+            salt: String::new(),
+        }
+    }
+}
+
+/// Policy for verifying and enforcing memory seals on shared buffers transferred via SCM_RIGHTS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BufferSealPolicy {
+    /// Reject any memfd buffer missing F_SEAL_SHRINK | F_SEAL_GROW
+    RejectUnsealed,
+    /// Automatically apply F_SEAL_SHRINK | F_SEAL_GROW if not already sealed
+    AutoApplySeals,
+    /// Pass-through without enforcement (unrestricted mode)
+    Disabled,
 }
 
 /// The deterministic state machine for the Micro-Supervisor.

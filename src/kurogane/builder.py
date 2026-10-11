@@ -4,6 +4,8 @@ Compiles declarative appliance recipes into bootable EROFS cartridge images root
 """
 
 import glob
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -464,14 +466,22 @@ fi
         status_path = os.path.join(usr_bin, "cartilage-status")
         status_content = """#!/bin/bash
 while true; do
-    RAM_USED=$(free -h 2>/dev/null | awk '/^Mem:/ {print $3}')
-    RAM_TOTAL=$(free -h 2>/dev/null | awk '/^Mem:/ {print $2}')
-    IP=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7}')
-    [[ -z "$IP" ]] && IP=$(ip -4 addr show scope global 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -1)
-    [[ -z "$IP" ]] && IP="Offline"
-    TIME=$(date '+%H:%M')
-    echo "🚀 CLICK BAR OR Alt+d: Menu | Alt+Enter: Term | Alt+w: Web | Alt+m: MPV | RAM: ${RAM_USED:-0}/${RAM_TOTAL:-0} | ${TIME}"
-    sleep 2
+    if [[ -r /proc/meminfo ]]; then
+        total_kb=$(awk '/MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+        avail_kb=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+        if [[ $total_kb -gt 0 ]]; then
+            used_mb=$(( (total_kb - avail_kb) / 1024 ))
+            total_mb=$(( total_kb / 1024 ))
+            RAM_STR="${used_mb}M/${total_mb}M"
+        else
+            RAM_STR="0M/0M"
+        fi
+    else
+        RAM_STR="0M/0M"
+    fi
+    TIME=$(date '+%H:%M' 2>/dev/null || echo "--:--")
+    echo "🚀 CLICK BAR OR Alt+d: Menu | Alt+Enter: Term | Alt+w: Web | Alt+m: MPV | RAM: ${RAM_STR} | ${TIME}"
+    sleep 5
 done
 """
         with open(status_path, "w", encoding="utf-8") as f:
@@ -747,6 +757,10 @@ fi
         subprocess.run(mkfs_cmd, check=True, stdout=subprocess.DEVNULL)
         os.replace(temp_out, output_path)
 
+        # Step 6: Cryptographic dm-verity Merkle Tree Computation
+        verity_meta = compute_verity_merkle_tree(output_path)
+        print(f"[cartilage build] [VERITY] dm-verity SHA-256 root hash: {verity_meta['root_hash']}")
+
         size_mb = os.path.getsize(output_path) // (1024 * 1024)
         print(f"[SUCCESS] Cartridge compiled successfully: {output_path} ({size_mb} MiB)")
         return output_path
@@ -754,3 +768,51 @@ fi
     finally:
         subprocess.run(["chmod", "-R", "u+w", staging_dir], stderr=subprocess.DEVNULL)
         shutil.rmtree(staging_dir, ignore_errors=True)
+
+
+def compute_verity_merkle_tree(image_path: str, block_size: int = 4096, salt_hex: str = "") -> Dict[str, Any]:
+    """
+    Computes a cryptographic dm-verity SHA-256 Merkle tree for a block image.
+    Divides data into 4096-byte blocks and produces the root hash and metadata manifest.
+    """
+    salt = bytes.fromhex(salt_hex) if salt_hex else b""
+    file_size = os.path.getsize(image_path)
+    data_blocks = (file_size + block_size - 1) // block_size
+
+    current_layer_hashes: List[bytes] = []
+    with open(image_path, "rb") as f:
+        for _ in range(data_blocks):
+            chunk = f.read(block_size)
+            if len(chunk) < block_size:
+                chunk = chunk.ljust(block_size, b"\x00")
+            h = hashlib.sha256(salt + chunk).digest()
+            current_layer_hashes.append(h)
+
+    if not current_layer_hashes:
+        return {"root_hash": hashlib.sha256().hexdigest(), "data_blocks": 0, "salt": salt_hex}
+
+    # Build Merkle layers until a single root hash remains
+    while len(current_layer_hashes) > 1:
+        next_layer: List[bytes] = []
+        hashes_per_block = block_size // 32  # 128 SHA-256 hashes per 4KB block
+        for i in range(0, len(current_layer_hashes), hashes_per_block):
+            block_hashes = current_layer_hashes[i : i + hashes_per_block]
+            packed_block = b"".join(block_hashes)
+            if len(packed_block) < block_size:
+                packed_block = packed_block.ljust(block_size, b"\x00")
+            next_layer.append(hashlib.sha256(salt + packed_block).digest())
+        current_layer_hashes = next_layer
+
+    root_hash = current_layer_hashes[0].hex()
+    meta = {
+        "root_hash": root_hash,
+        "data_blocks": data_blocks,
+        "data_block_size": block_size,
+        "hash_block_size": block_size,
+        "salt": salt_hex,
+    }
+    manifest_path = image_path + ".verity.json"
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+    return meta
+

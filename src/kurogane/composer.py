@@ -204,9 +204,9 @@ def ensure_initramfs_hub(build_dir: str, repo_root: str) -> str:
         for item in os.listdir("/usr/lib/initcpio/hooks"):
             os.symlink(f"/usr/lib/initcpio/hooks/{item}", os.path.join(hookdir, "hooks", item))
 
-        shutil.copy2(os.path.join(repo_root, "src", "cartilage", "initcpio", "install", "cartilage_hub"),
+        shutil.copy2(os.path.join(repo_root, "src", "kurogane", "initcpio", "install", "cartilage_hub"),
                      os.path.join(hookdir, "install", "cartilage_hub"))
-        shutil.copy2(os.path.join(repo_root, "src", "cartilage", "initcpio", "hooks", "cartilage_hub"),
+        shutil.copy2(os.path.join(repo_root, "src", "kurogane", "initcpio", "hooks", "cartilage_hub"),
                      os.path.join(hookdir, "hooks", "cartilage_hub"))
 
         conf_file = os.path.join(build_dir, "mkinitcpio-hub.conf")

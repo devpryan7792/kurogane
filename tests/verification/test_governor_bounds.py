@@ -20,15 +20,13 @@ def test_cgroup_spec():
 
     # 1. Mathematical invariance check
     expected_bytes = TARGET_QUOTA_MB * 1024 * 1024
-    if TARGET_QUOTA_BYTES != expected_bytes:
-        print(f"[FAIL] Invariant broken: {TARGET_QUOTA_BYTES} != {expected_bytes}")
-        return 1
+    assert TARGET_QUOTA_BYTES == expected_bytes, f"Invariant broken: {TARGET_QUOTA_BYTES} != {expected_bytes}"
 
     # 2. Cgroup v2 unified hierarchy inspection
     cgroup2_path = "/sys/fs/cgroup"
     if not os.path.exists(cgroup2_path):
         print("[WARN] Host does not expose /sys/fs/cgroup. Skipping kernel mount check.")
-        return 0
+        return
 
     print("[INFO] Linux /sys/fs/cgroup detected. Inspecting unified hierarchy...")
 
@@ -59,7 +57,6 @@ def test_cgroup_spec():
     print("=" * 65)
     print("[PASS] Glass Box Memory Governor calculation and cgroup invariants verified!")
     print("=" * 65)
-    return 0
 
 if __name__ == "__main__":
-    sys.exit(test_cgroup_spec())
+    test_cgroup_spec()

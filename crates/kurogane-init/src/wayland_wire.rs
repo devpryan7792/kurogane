@@ -2,7 +2,7 @@
 //! Implements zero-allocation 8-byte framing, streaming chunk reassembly,
 //! and registry global capability inspection according to Wayland wire specification.
 
-use crate::KuroganeError;
+use crate::{BufferSealPolicy, KuroganeError};
 
 /// The standard 8-byte header present at the start of every Wayland wire message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -344,6 +344,81 @@ impl<const CAPACITY: usize> WireStreamBuffer<CAPACITY> {
     }
 }
 
+/// Represents the classification of an incoming SCM_RIGHTS file descriptor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FdType {
+    /// Linux memfd or shm backing buffer
+    SharedMemory,
+    /// Direct Rendering Manager DMA buffer (prime)
+    DmaBuf,
+    /// Unix pipe or standard socket
+    PipeOrSocket,
+    /// Unknown or regular file descriptor
+    Other,
+}
+
+/// Inspection outcome for an individual file descriptor passing through SCM_RIGHTS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FdSecurityReport {
+    pub fd: std::os::unix::io::RawFd,
+    pub fd_type: FdType,
+    pub seals: i32,
+    pub is_sealed: bool,
+}
+
+/// Inspects an incoming file descriptor and enforces required buffer seals according to policy.
+pub fn inspect_and_enforce_fd(
+    fd: std::os::unix::io::RawFd,
+    policy: BufferSealPolicy,
+) -> Result<FdSecurityReport, KuroganeError> {
+    // Query seals via fcntl(fd, F_GET_SEALS)
+    let seals = unsafe { libc::fcntl(fd, libc::F_GET_SEALS) };
+    if seals >= 0 {
+        let required = libc::F_SEAL_SHRINK | libc::F_SEAL_GROW;
+        let has_required_seals = (seals & required) == required;
+
+        if !has_required_seals {
+            match policy {
+                BufferSealPolicy::RejectUnsealed => {
+                    return Err(KuroganeError::MemfdSealError(
+                        "Rejected unsealed memfd: missing F_SEAL_SHRINK | F_SEAL_GROW",
+                    ));
+                }
+                BufferSealPolicy::AutoApplySeals => {
+                    let ret = unsafe { libc::fcntl(fd, libc::F_ADD_SEALS, required) };
+                    if ret < 0 {
+                        return Err(KuroganeError::MemfdSealError(
+                            "Failed to apply required memory seals to memfd",
+                        ));
+                    }
+                    return Ok(FdSecurityReport {
+                        fd,
+                        fd_type: FdType::SharedMemory,
+                        seals: seals | required,
+                        is_sealed: true,
+                    });
+                }
+                BufferSealPolicy::Disabled => {}
+            }
+        }
+
+        Ok(FdSecurityReport {
+            fd,
+            fd_type: FdType::SharedMemory,
+            seals,
+            is_sealed: has_required_seals,
+        })
+    } else {
+        // Not a sealed memfd (could be a dmabuf, eventfd, or pipe)
+        Ok(FdSecurityReport {
+            fd,
+            fd_type: FdType::Other,
+            seals: 0,
+            is_sealed: false,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -469,5 +544,34 @@ mod tests {
         buf.clear();
         assert!(buf.is_empty());
         assert_eq!(buf.len(), 0);
+    }
+
+    #[test]
+    fn test_inspect_and_enforce_fd_with_memfd() {
+        use std::ffi::CString;
+
+        let name = CString::new("test_shm").unwrap();
+        let fd = unsafe { libc::memfd_create(name.as_ptr(), libc::MFD_ALLOW_SEALING) };
+        if fd >= 0 {
+            // Initially, memfd has no seals
+            let report_unsealed = inspect_and_enforce_fd(fd, BufferSealPolicy::Disabled).unwrap();
+            assert_eq!(report_unsealed.fd_type, FdType::SharedMemory);
+            assert!(!report_unsealed.is_sealed);
+
+            // Reject policy must reject
+            let reject_err = inspect_and_enforce_fd(fd, BufferSealPolicy::RejectUnsealed);
+            assert!(reject_err.is_err());
+
+            // Auto-apply policy must apply seals and succeed
+            let report_sealed = inspect_and_enforce_fd(fd, BufferSealPolicy::AutoApplySeals).unwrap();
+            assert_eq!(report_sealed.fd_type, FdType::SharedMemory);
+            assert!(report_sealed.is_sealed);
+
+            // Now reject policy must succeed because seals are active!
+            let report_now_ok = inspect_and_enforce_fd(fd, BufferSealPolicy::RejectUnsealed).unwrap();
+            assert!(report_now_ok.is_sealed);
+
+            unsafe { libc::close(fd) };
+        }
     }
 }
