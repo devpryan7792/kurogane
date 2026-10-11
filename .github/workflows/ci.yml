@@ -72,9 +72,8 @@ jobs:
 
       - name: Validate All Recipe Manifests
         run: |
-          chmod +x ./kurogane ./cartilage
+          chmod +x ./kurogane
           ./kurogane validate recipes/*.yaml recipes/experimental/*.yaml
-          ./cartilage validate recipes/terminal-foot.yaml
 
   systems-sandbox:
     name: Systems Sandbox & CLI Verification
@@ -101,8 +100,8 @@ jobs:
 
       - name: Run CLI Contract Verification
         run: |
-          chmod +x ./kurogane ./cartilage scripts/15_test_cartilage_cli.sh
-          ./scripts/15_test_cartilage_cli.sh
+          chmod +x ./kurogane scripts/15_test_kurogane_cli.sh
+          ./scripts/15_test_kurogane_cli.sh
 
       - name: Run User Namespace & Seccomp Harness
         run: |

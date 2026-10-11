@@ -6,11 +6,12 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${REPO_ROOT}/build"
 PACMAN_CONF="${BUILD_DIR}/pacman.conf"
 
-DEFAULT_ROOTFS="/var/lib/cartilage/rootfs"
+DEFAULT_ROOTFS="/var/lib/kurogane/rootfs"
+[[ -d "/var/lib/cartilage/rootfs" ]] && DEFAULT_ROOTFS="/var/lib/cartilage/rootfs"
 TARGET_DIR="${1:-${DEFAULT_ROOTFS}}"
 
 echo "============================================================"
-echo "Cartilage OS — Building Base Rootfs (SPEC Task 1)"
+echo "Kurogane OS — Building Base Rootfs"
 echo "Target: ${TARGET_DIR}"
 echo "Pacman Config: ${PACMAN_CONF}"
 echo "============================================================"
@@ -57,7 +58,7 @@ else
 fi
 
 # Invalidate cached base_template so subsequent builds don't reuse stale kernel modules
-rm -rf /var/lib/cartilage/base_template
+rm -rf /var/lib/kurogane/base_template /var/lib/cartilage/base_template
 
 echo "==> Compiling initial base cartridge: ${BUILD_DIR}/cartridge_base_arch.img..."
 mkdir -p "${BUILD_DIR}"

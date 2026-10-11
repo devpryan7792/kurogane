@@ -15,13 +15,17 @@ KERNEL=""
 INITRD=""
 if [[ -f "${BUILD_DIR}/initramfs-linux.img" ]]; then
     INITRD="${BUILD_DIR}/initramfs-linux.img"
+elif [[ -f "/var/lib/kurogane/rootfs/boot/initramfs-linux.img" ]]; then
+    INITRD="/var/lib/kurogane/rootfs/boot/initramfs-linux.img"
 elif [[ -f "/var/lib/cartilage/rootfs/boot/initramfs-linux.img" ]]; then
     INITRD="/var/lib/cartilage/rootfs/boot/initramfs-linux.img"
 elif [[ -f "/boot/initramfs-linux.img" ]]; then
     INITRD="/boot/initramfs-linux.img"
 fi
 
-if [[ -f "/var/lib/cartilage/rootfs/boot/vmlinuz-linux" ]]; then
+if [[ -f "/var/lib/kurogane/rootfs/boot/vmlinuz-linux" ]]; then
+    KERNEL="/var/lib/kurogane/rootfs/boot/vmlinuz-linux"
+elif [[ -f "/var/lib/cartilage/rootfs/boot/vmlinuz-linux" ]]; then
     KERNEL="/var/lib/cartilage/rootfs/boot/vmlinuz-linux"
 elif [[ -f "/boot/vmlinuz-linux" ]]; then
     KERNEL="/boot/vmlinuz-linux"
@@ -43,7 +47,7 @@ if [[ -c /dev/kvm ]]; then
 fi
 
 echo "============================================================"
-echo "Starting Cartilage OS — Ultra-Lean Alpine Cartridge (Mousepad)"
+echo "Starting Kurogane OS — Ultra-Lean Alpine Cartridge (Mousepad)"
 echo "Image Size: 44.8 MB (96% smaller than Arch)"
 echo "Memory:     ~57 MB Idle RAM (Cold boot ~4.3s)"
 echo "Cartridge:  ${CARTRIDGE_IMG}"

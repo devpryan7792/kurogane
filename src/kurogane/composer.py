@@ -39,7 +39,7 @@ def compose_disk(output_img: str, targets: List[str]) -> str:
                     img_path = c
                     break
             if not img_path:
-                raise FileNotFoundError(f"Cartridge image for recipe {target} not found. Run 'cartilage build {target}' first.")
+                raise FileNotFoundError(f"Cartridge image for recipe {target} not found. Run 'kurogane build {target}' first.")
             cartridge_entries.append((app_name, title, img_path))
         else:
             img_path = os.path.abspath(target)
@@ -243,7 +243,7 @@ def compose_hub_disk(output_img: str, targets: List[str]) -> str:
                     img_path = c
                     break
             if not img_path:
-                raise FileNotFoundError(f"Cartridge image for recipe {target} not found. Run 'cartilage build {target}' first.")
+                raise FileNotFoundError(f"Cartridge image for recipe {target} not found. Run 'kurogane build {target}' first.")
             cartridge_entries.append((app_name, title, img_path))
         else:
             img_path = os.path.abspath(target)

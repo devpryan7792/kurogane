@@ -44,15 +44,15 @@ def find_base_image(engine: str, build_dir: str, requested_base: Optional[str] =
     for r in rootfs_candidates:
         if os.path.isdir(r) and os.path.isfile(os.path.join(r, "boot", "vmlinuz-linux")):
             base_target = os.path.join(build_dir, f"cartridge_base_{engine}.img")
-            print(f"[cartilage build] Pre-built base cartridge missing, but base rootfs detected at {r}.")
-            print(f"[cartilage build] Auto-compiling initial base cartridge: {base_target}...")
+            print(f"[kurogane build] Pre-built base cartridge missing, but base rootfs detected at {r}.")
+            print(f"[kurogane build] Auto-compiling initial base cartridge: {base_target}...")
             os.makedirs(build_dir, exist_ok=True)
             subprocess.run(["mkfs.erofs", "--all-root", "-zlz4hc,12", base_target, r], check=True)
             return base_target
 
     raise FileNotFoundError(
         f"No base cartridge found for engine '{engine}' in {build_dir}. "
-        f"To bootstrap Kurogane OS on a fresh clone, run 'sudo ./scripts/01_build_base_rootfs.sh' "
+        f"To bootstrap Kurogane OS on a fresh clone, run 'sudo ./scripts/bootstrap_base_rootfs.sh' "
         f"(or place a pre-built base cartridge into build/)."
     )
 
@@ -67,7 +67,7 @@ def build_appliance(
     if not os.path.isfile(recipe_path):
         raise FileNotFoundError(f"Recipe not found: {recipe_path}")
 
-    print(f"[cartilage build] Loading recipe: {os.path.basename(recipe_path)}")
+    print(f"[kurogane build] Loading recipe: {os.path.basename(recipe_path)}")
     data = yaml.load(recipe_path)
     manifest = schema.validate_manifest(data)
 
@@ -91,9 +91,9 @@ def build_appliance(
     os.makedirs(cache_dir, exist_ok=True)
 
     print("=" * 60)
-    print(f"[cartilage build] Compiling: {app_name} v{manifest['appliance']['version']}")
-    print(f"[cartilage build] Runtime: {engine} | Target: {os.path.basename(output_path)}")
-    print(f"[cartilage build] Entrypoint: {display_entry} {' '.join(args)}")
+    print(f"[kurogane build] Compiling: {app_name} v{manifest['appliance']['version']}")
+    print(f"[kurogane build] Runtime: {engine} | Target: {os.path.basename(output_path)}")
+    print(f"[kurogane build] Entrypoint: {display_entry} {' '.join(args)}")
     print("=" * 60)
 
     # Step 1: Locate base image and extract rootlessly
@@ -116,7 +116,7 @@ def build_appliance(
         binary_needed = os.path.basename(display_entry)
         bin_path = os.path.join(staging_dir, "usr", "bin", binary_needed)
         if not os.path.exists(bin_path):
-            print(f"[cartilage build] Binary '{binary_needed}' not in base. Checking packages...")
+            print(f"[kurogane build] Binary '{binary_needed}' not in base. Checking packages...")
             pacman_conf = os.path.join(build_dir, "pacman.conf")
             db_dir = os.path.join(build_dir, "pacman_db")
 
@@ -128,7 +128,7 @@ def build_appliance(
                         capture_output=True, text=True
                     )
                     if res.returncode != 0 and shutil.which("fakeroot"):
-                        print(f"[cartilage build] Fetching '{p}' via fakeroot pacman...")
+                        print(f"[kurogane build] Fetching '{p}' via fakeroot pacman...")
                         subprocess.run(
                             ["fakeroot", "pacman", "--config", pacman_conf, "--dbpath", db_dir, "--cachedir", cache_dir, "-Sw", "--noconfirm", p],
                             check=True,
@@ -149,7 +149,7 @@ def build_appliance(
                                 elif pkg_path not in target_pkgs:
                                     target_pkgs.append(pkg_path)
                         if missing and shutil.which("fakeroot"):
-                            print(f"[cartilage build] Fetching {len(missing)} missing packages for '{p}'...")
+                            print(f"[kurogane build] Fetching {len(missing)} missing packages for '{p}'...")
                             subprocess.run(
                                 ["fakeroot", "pacman", "--config", pacman_conf, "--dbpath", db_dir, "--cachedir", cache_dir, "-Sw", "--noconfirm", p],
                                 check=True,
@@ -162,7 +162,7 @@ def build_appliance(
             if not target_pkgs:
                 target_pkgs = glob.glob(os.path.join(cache_dir, "*.pkg.tar.*"))
 
-            print(f"[cartilage build] Unpacking {len(target_pkgs)} packages into appliance rootfs...")
+            print(f"[kurogane build] Unpacking {len(target_pkgs)} packages into appliance rootfs...")
             for pkg in target_pkgs:
                 tar_cmd = ["tar"]
                 if pkg.endswith(".zst"):
@@ -175,11 +175,11 @@ def build_appliance(
         # Configure target Wayland compositor
         compositor = compositor_override or manifest["display"].get("compositor", "cage")
         if compositor == "cage":
-            print(f"[cartilage build] Compositor: 'cage' (Dedicated Single-App Kiosk)")
+            print(f"[kurogane build] Compositor: 'cage' (Dedicated Single-App Kiosk)")
             if "session" in display_entry.lower() or ("foot" in packages and "dillo" in packages):
-                print(f"[cartilage build] [WARN] 'cage' runs strictly in single-window kiosk mode. For multi-app workflows, choose 'dwl' or 'sway'.")
+                print(f"[kurogane build] [WARN] 'cage' runs strictly in single-window kiosk mode. For multi-app workflows, choose 'dwl' or 'sway'.")
         elif compositor == "dwl":
-            print(f"[cartilage build] Compositor: 'dwl' (Ultra-Lean C-Based Dynamic Tiling)")
+            print(f"[kurogane build] Compositor: 'dwl' (Ultra-Lean C-Based Dynamic Tiling)")
             dwl_candidates = [
                 os.path.join(build_dir, "dwl"),
                 os.path.expanduser("~/.local/bin/dwl"),
@@ -192,7 +192,7 @@ def build_appliance(
                     shutil.copy2(cand, dest)
                     os.chmod(dest, 0o755)
                     dwl_found = True
-                    print(f"[cartilage build] Installed custom dwl compositor from {cand}")
+                    print(f"[kurogane build] Installed custom dwl compositor from {cand}")
                     break
             if not dwl_found:
                 raise FileNotFoundError("dwl compositor binary not found in build/dwl or ~/.local/bin/dwl")
@@ -205,7 +205,7 @@ def build_appliance(
                         check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
                     )
         elif compositor == "labwc":
-            print(f"[cartilage build] Compositor: 'labwc' (Stacking/Floating Window Manager)")
+            print(f"[kurogane build] Compositor: 'labwc' (Stacking/Floating Window Manager)")
             # Ensure labwc and its dependencies are unpacked
             for dep_pkg in ["labwc", "wlroots0.20", "cairo", "pango", "libinput", "libsfdo", "libxml2", "librsvg", "libpng"]:
                 for match in glob.glob(os.path.join(cache_dir, f"{dep_pkg}*.pkg.tar.*")):
@@ -237,11 +237,11 @@ def build_appliance(
                 src_f = os.path.join(labwc_cfg_dir, f_name)
                 if os.path.isfile(src_f):
                     shutil.copy2(src_f, os.path.join(user_labwc_dir, f_name))
-            print("[cartilage build] Installed Kurogane Stacking Desktop configuration (/etc/xdg/labwc)")
+            print("[kurogane build] Installed Kurogane Stacking Desktop configuration (/etc/xdg/labwc)")
             if display_entry in ("/usr/bin/labwc", "/usr/bin/workstation-session") or not os.path.exists(os.path.join(staging_dir, display_entry.lstrip("/"))):
                 display_entry = "/usr/bin/labwc"
         elif compositor == "sway":
-            print(f"[cartilage build] Compositor: 'sway' (i3-Compatible Tiling Window Manager)")
+            print(f"[kurogane build] Compositor: 'sway' (i3-Compatible Tiling Window Manager)")
             # Ensure sway package and its dependencies are unpacked
             for dep_pkg in ["sway", "wlroots0.20", "cairo", "pango", "libinput", "xcb-util-wm"]:
                 for match in glob.glob(os.path.join(cache_dir, f"{dep_pkg}*.pkg.tar.*")):
@@ -257,7 +257,7 @@ def build_appliance(
             if os.path.isfile(sway_cfg_src):
                 shutil.copy2(sway_cfg_src, sway_cfg_dest)
                 os.chmod(sway_cfg_dest, 0o644)
-                print(f"[cartilage build] Installed Kurogane i3/sway configuration to /etc/cartilage/sway.conf")
+                print(f"[kurogane build] Installed Kurogane i3/sway configuration to /etc/cartilage/sway.conf")
             # If display_entry is sway or workstation-session, ensure entrypoint points to sway
             if display_entry in ("/usr/bin/sway", "/usr/bin/workstation-session") or not os.path.exists(os.path.join(staging_dir, display_entry.lstrip("/"))):
                 display_entry = "/usr/bin/sway"
@@ -532,9 +532,9 @@ int main(int argc, char **argv) {
                     os.symlink("/usr/bin/sudo", os.path.join(bin_dir, "sudo"))
                 except Exception:
                     pass
-            print("[cartilage build] Compiled setuid /usr/bin/sudo helper")
+            print("[kurogane build] Compiled setuid /usr/bin/sudo helper")
         except Exception as e:
-            print(f"[cartilage build] [WARN] Failed to compile setuid sudo: {e}")
+            print(f"[kurogane build] [WARN] Failed to compile setuid sudo: {e}")
         finally:
             if os.path.exists(sudo_c_path):
                 os.remove(sudo_c_path)
@@ -593,7 +593,7 @@ fi
 
 cat << 'NOTICE'
 ======================================================================
-                 CARTILAGE OS — IMMUTABLE APPLIANCE
+                 KUROGANE OS — IMMUTABLE APPLIANCE
 ======================================================================
  This cartridge is an immutable read-only appliance.
  Direct runtime package installation is intentionally disabled:
@@ -606,7 +606,7 @@ cat << 'NOTICE'
         packages:
           - <package-name>
  2. Rebuild the immutable cartridge:
-      ./cartilage build recipes/<recipe>.yaml
+      ./kurogane build recipes/<recipe>.yaml
 
  [PERSISTENT USER STORAGE]
  User code, dotfiles, Git repos, and notes persist safely in:
@@ -627,7 +627,7 @@ exit 1
             with open(os.path.join(usr_local_bin, "pacman"), "w", encoding="utf-8") as f:
                 f.write(pacman_wrapper)
             os.chmod(os.path.join(usr_local_bin, "pacman"), 0o755)
-            print("[cartilage build] Injected Kurogane Appliance Package Guard for pacman")
+            print("[kurogane build] Injected Kurogane Appliance Package Guard for pacman")
 
         # Inject cartilage utilities (menu, stress, persistent term, anti-void)
         for util_name in ["cartilage-menu", "cartilage-stress", "cartilage-session-term", "cartilage-anti-void"]:
@@ -759,7 +759,7 @@ fi
 
         # Step 6: Cryptographic dm-verity Merkle Tree Computation
         verity_meta = compute_verity_merkle_tree(output_path)
-        print(f"[cartilage build] [VERITY] dm-verity SHA-256 root hash: {verity_meta['root_hash']}")
+        print(f"[kurogane build] [VERITY] dm-verity SHA-256 root hash: {verity_meta['root_hash']}")
 
         size_mb = os.path.getsize(output_path) // (1024 * 1024)
         print(f"[SUCCESS] Cartridge compiled successfully: {output_path} ({size_mb} MiB)")

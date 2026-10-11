@@ -30,15 +30,22 @@ ehthumbs.db
 
 # Documentation whitelist (tracked)
 !README.md
-!PRD.md
 !SPEC.md
 !ROADMAP.md
 !ARCHITECTURE.md
 !BENCHMARKS.md
-!EXPLAINER.md
 !CONTRIBUTING.md
 !ATTRIBUTION.md
 !LICENSE
+
+# Internal planning and agent working docs
+TODO.md
+EXPLAINER.md
+COMMUNITY_LAUNCH_KIT.md
+PRD.md
+
+# Precompiled binary blobs
+build/dwl
 
 # Python cache
 __pycache__/

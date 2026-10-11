@@ -19,13 +19,17 @@ KERNEL=""
 INITRD=""
 if [[ -f "${BUILD_DIR}/initramfs-linux.img" ]]; then
     INITRD="${BUILD_DIR}/initramfs-linux.img"
+elif [[ -f "/var/lib/kurogane/rootfs/boot/initramfs-linux.img" ]]; then
+    INITRD="/var/lib/kurogane/rootfs/boot/initramfs-linux.img"
 elif [[ -f "/var/lib/cartilage/rootfs/boot/initramfs-linux.img" ]]; then
     INITRD="/var/lib/cartilage/rootfs/boot/initramfs-linux.img"
 elif [[ -f "/boot/initramfs-linux.img" ]]; then
     INITRD="/boot/initramfs-linux.img"
 fi
 
-if [[ -f "/var/lib/cartilage/rootfs/boot/vmlinuz-linux" ]]; then
+if [[ -f "/var/lib/kurogane/rootfs/boot/vmlinuz-linux" ]]; then
+    KERNEL="/var/lib/kurogane/rootfs/boot/vmlinuz-linux"
+elif [[ -f "/var/lib/cartilage/rootfs/boot/vmlinuz-linux" ]]; then
     KERNEL="/var/lib/cartilage/rootfs/boot/vmlinuz-linux"
 elif [[ -f "/boot/vmlinuz-linux" ]]; then
     KERNEL="/boot/vmlinuz-linux"
@@ -47,7 +51,7 @@ if [[ -c /dev/kvm ]]; then
 fi
 
 echo "============================================================"
-echo "Starting Cartilage OS — Text Editor (Mousepad - Arch glibc)"
+echo "Starting Kurogane OS — Text Editor (Mousepad - Arch glibc)"
 echo "Cartridge: ${CARTRIDGE_IMG}"
 echo "Kernel:    ${KERNEL}"
 echo "Initrd:    ${INITRD}"

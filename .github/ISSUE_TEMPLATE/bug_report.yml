@@ -1,18 +1,18 @@
 name: 🐛 Bug Report
-description: Report an issue, build failure, or boot error in Cartilage OS
+description: Report an issue, build failure, or boot error in Kurogane OS
 title: "[Bug]: "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Please report any issues you encounter when building or running Cartilage OS appliances.
+        Please report any issues you encounter when building or running Kurogane OS appliances.
   - type: input
     id: recipe_name
     attributes:
       label: Recipe or Command
-      description: Which recipe or CLI command produced the bug? (e.g. `recipes/terminal-foot.yaml`, `./cartilage build`)
-      placeholder: e.g. ./cartilage run recipes/terminal-foot.yaml
+      description: Which recipe or CLI command produced the bug? (e.g. `recipes/terminal-foot.yaml`, `./kurogane build`)
+      placeholder: e.g. ./kurogane run recipes/terminal-foot.yaml
     validations:
       required: true
   - type: textarea

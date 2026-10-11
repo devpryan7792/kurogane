@@ -9,7 +9,14 @@ build() {
     add_module 'virtio_pci'
     add_binary 'blkid'
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    HUB_LOADER="$(cd "${SCRIPT_DIR}/../.." && pwd)/cartilage/hub_loader.sh"
+    PARENT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+    if [[ -f "${PARENT_DIR}/hub_loader.sh" ]]; then
+        HUB_LOADER="${PARENT_DIR}/hub_loader.sh"
+    elif [[ -f "${PARENT_DIR}/kurogane/hub_loader.sh" ]]; then
+        HUB_LOADER="${PARENT_DIR}/kurogane/hub_loader.sh"
+    else
+        HUB_LOADER="${PARENT_DIR}/cartilage/hub_loader.sh"
+    fi
     if [[ ! -f "$HUB_LOADER" ]]; then
         echo "Error: hub_loader.sh not found at ${HUB_LOADER}" >&2
         return 1

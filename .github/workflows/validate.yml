@@ -25,7 +25,6 @@ jobs:
 
       - name: Validate Recipe Manifests
         run: |
-          chmod +x ./kurogane ./cartilage
+          chmod +x ./kurogane
           ./kurogane validate recipes/*.yaml recipes/experimental/*.yaml
-          ./cartilage validate recipes/terminal-foot.yaml
 

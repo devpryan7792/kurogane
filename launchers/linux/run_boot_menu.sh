@@ -17,8 +17,8 @@ for p in /usr/share/edk2/x64/OVMF.4m.fd /usr/share/edk2/x64/OVMF_CODE.4m.fd /usr
 done
 
 if [[ ! -f "${COMBINED_IMG}" || $(stat -c%s "${COMBINED_IMG}") -eq 0 ]]; then
-    echo "==> ${COMBINED_IMG} not found. Building via scripts/07_build_combined_image.sh..."
-    "${REPO_ROOT}/scripts/07_build_combined_image.sh"
+    echo "==> ${COMBINED_IMG} not found. Building via ./kurogane compose..."
+    "${REPO_ROOT}/kurogane" compose recipes/browser-dillo.yaml recipes/editor-mousepad.yaml -o "${COMBINED_IMG}"
 fi
 
 if [[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]]; then
@@ -37,7 +37,7 @@ if [[ -n "${OVMF_BIOS}" ]]; then
 fi
 
 echo "============================================================"
-echo "Starting Cartilage OS — Unified Multi-Boot UEFI Menu"
+echo "Starting Kurogane OS — Unified Multi-Boot UEFI Menu"
 echo "Select Dillo or Mousepad using arrow keys and press Enter."
 echo "Image:   ${COMBINED_IMG}"
 echo "Firmware: ${OVMF_BIOS:-SeaBIOS fallback}"

@@ -38,10 +38,10 @@ def test_gpu_fallback_env():
 
 def test_qemu_software_render():
     print("[Task 25] 3. Testing Live QEMU Boot with --force-software-render...")
-    cartilage_bin = os.path.join(REPO_ROOT, "cartilage")
+    kurogane_bin = os.path.join(REPO_ROOT, "kurogane")
     recipe_path = os.path.join(REPO_ROOT, "recipes/terminal-foot.yaml")
     cmd = [
-        cartilage_bin,
+        kurogane_bin,
         "run",
         recipe_path,
         "--test",

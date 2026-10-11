@@ -225,7 +225,7 @@ KUROGANE OS operates on an **Appliance Isolation and Unbrickable Integrity** mod
 ## 8. Bootstrap & Build Pipeline
 
 1. **Bootstrap Phase (One-Time)**:
-   - Compiles the base Arch rootfs and initramfs via `sudo ./scripts/01_build_base_rootfs.sh`. This step requires root/pacstrap to populate the shared base `build/cartridge_base_arch.img`.
+   - Compiles the base Arch rootfs and initramfs via `sudo ./scripts/bootstrap_base_rootfs.sh`. This step requires root/pacstrap to populate the shared base `build/cartridge_base_arch.img`.
 2. **Declarative Cartridge Builds (Rootless)**:
    - Once `build/cartridge_base_arch.img` is present, compiling recipes into standalone cartridges via `./kurogane build recipes/*.yaml` is **100% rootless** (zero sudo, zero Docker required) by utilizing user namespaces and pure-Python schema packaging.
 3. **Composition & Flashing**:

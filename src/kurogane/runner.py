@@ -96,7 +96,7 @@ def run_appliance(
                 break
         if not cartridge_img:
             print(f"[kurogane] Cartridge image not found for recipe '{target}'.")
-            print(f"[kurogane] Run: cartilage build {target}")
+            print(f"[kurogane] Run: kurogane build {target}")
             return 1
     else:
         # Direct image specified

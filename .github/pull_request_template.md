@@ -10,6 +10,6 @@ Briefly describe your changes or the new appliance recipe you are contributing.
 
 ## Verification Checklist
 Before submitting, please ensure you have tested your change locally:
-- [ ] Recipe passes schema validation: `./cartilage validate recipes/<name>.yaml`
-- [ ] (If modifying code/QEMU) Appliance boots and runs: `./cartilage run recipes/<name>.yaml`
-- [ ] (If modifying runtime) Regression suite verified: `./scripts/15_test_cartilage_cli.sh`
+- [ ] Recipe passes schema validation: `./kurogane validate recipes/<name>.yaml`
+- [ ] (If modifying code/QEMU) Appliance boots and runs: `./kurogane run recipes/<name>.yaml`
+- [ ] (If modifying runtime) Regression suite verified: `./scripts/15_test_kurogane_cli.sh`

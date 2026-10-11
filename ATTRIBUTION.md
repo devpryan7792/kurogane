@@ -157,7 +157,7 @@ Kurogane OS leverages, interacts with, or generates build recipes targeting vari
 ## 5. End-User Responsibility & Hardware Flashing Warning
 
 ### Risk of Data Overwrite
-Kurogane OS includes disk flashing and partitioning utilities (e.g., `kurogane flash`, `scripts/13_flash_usb.sh`) that write disk structures directly to raw block devices (`/dev/sdX`, `/dev/nvmeXn1`). 
+Kurogane OS includes disk flashing and partitioning utilities (e.g., `kurogane flash`) that write disk structures directly to raw block devices (`/dev/sdX`, `/dev/nvmeXn1`). 
 
 - **End-User Responsibility:** Flashing a disk image is an inherently destructive operation. Selecting the wrong target drive **WILL IRREVOCABLY DESTROY EXISTING OPERATING SYSTEMS AND USER DATA**. 
 - **Verification Requirement:** Users are solely and strictly responsible for verifying the target block device identifier prior to executing any write or format operation.

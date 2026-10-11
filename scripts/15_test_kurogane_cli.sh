@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Cartilage OS — Automated Verification Suite for Phase 3: The Appliance Framework
+# Kurogane OS — Automated Verification Suite for Phase 3: The Appliance Framework
 # Tests:
 #   1. JSON Schema & Pure-Python Validator (Task 16)
-#   2. Unified Cartilage CLI Engine & Dispatcher (Task 17)
+#   2. Unified Kurogane CLI Engine & Dispatcher (Task 17)
 #   3. Modular /init.d/ Stage Runner & Fault Boundaries (Task 18)
 #   4. Declarative Recipe Hub (Task 19)
 #   5. Universal Bare-Metal USB Flashing Engine (Task 20)
@@ -29,28 +29,28 @@ log_fail() {
 }
 
 echo "============================================================"
-echo "Cartilage OS — Phase 3 Appliance Framework Verification"
+echo "KUROGANE OS — Appliance Framework Verification"
 echo "============================================================"
 
 # Test 1: JSON Schema Validity (Task 16)
 echo "==> Test 1: Checking JSON schema validity..."
-if python3 -c "import json; json.load(open('spec/kurogane.schema.json')); json.load(open('spec/cartilage.schema.json')); print('Schema JSON is valid')"; then
-    log_pass "spec/kurogane.schema.json and spec/cartilage.schema.json are valid JSON"
+if python3 -c "import json; json.load(open('spec/kurogane.schema.json')); print('Schema JSON is valid')"; then
+    log_pass "spec/kurogane.schema.json is valid JSON"
 else
     log_fail "Schema JSON failed parsing"
 fi
 
 # Test 2: Unified CLI Help & Module Entrypoint (Task 17)
-echo "==> Test 2: Checking CLI execution (kurogane --help, python3 -m kurogane, and cartilage shim)..."
-if ./kurogane --help >/dev/null && PYTHONPATH=src python3 -m kurogane --help >/dev/null && ./cartilage --help >/dev/null && PYTHONPATH=src python3 -m cartilage --help >/dev/null; then
-    log_pass "Unified kurogane and cartilage CLIs and module entrypoints pass --help"
+echo "==> Test 2: Checking CLI execution (kurogane --help and python3 -m kurogane)..."
+if ./kurogane --help >/dev/null && PYTHONPATH=src python3 -m kurogane --help >/dev/null; then
+    log_pass "Unified kurogane CLI and module entrypoint pass --help"
 else
     log_fail "CLI --help failed"
 fi
 
 # Test 3: Recipe Hub Validation (Task 19)
 echo "==> Test 3: Validating all standard recipes against schema..."
-if ./cartilage validate recipes/*.yaml; then
+if ./kurogane validate recipes/*.yaml; then
     log_pass "All standard recipes pass schema validation"
 else
     log_fail "Recipe validation failed"
@@ -78,10 +78,10 @@ fi
 
 # Test 5: Safe USB Flash Engine Dry-Run (Task 20)
 echo "==> Test 5: Testing safe block-device flasher in dry-run mode..."
-if ./cartilage flash --dry-run /dev/null recipes/browser-dillo.yaml | grep -q "DRY RUN SUCCESS"; then
-    log_pass "cartilage flash --dry-run /dev/null calculated partition layout cleanly"
+if ./kurogane flash --dry-run /dev/null recipes/browser-dillo.yaml | grep -q "DRY RUN SUCCESS"; then
+    log_pass "kurogane flash --dry-run /dev/null calculated partition layout cleanly"
 else
-    log_fail "cartilage flash dry-run failed"
+    log_fail "kurogane flash dry-run failed"
 fi
 
 CAN_RUN_QEMU=false
@@ -92,7 +92,7 @@ fi
 # Test 6: Appliance Execution in QEMU (Task 18)
 echo "==> Test 6: Running appliance in QEMU via declarative runner..."
 if [[ "$CAN_RUN_QEMU" = true ]]; then
-    RUN_LOG=$(./cartilage run recipes/browser-dillo.yaml --test 2>&1 || true)
+    RUN_LOG=$(./kurogane run recipes/browser-dillo.yaml --test 2>&1 || true)
     if echo "$RUN_LOG" | grep -Eq "Cartridge verification completed for.*dillo|CARTRIDGE VERIFICATION FOR dillo SUCCEEDED|\[TEST-PASS\] Appliance verification completed"; then
         log_pass "Appliance booted via modular stage runner and passed verification in QEMU"
     else
@@ -114,21 +114,21 @@ fi
 # Test 8: New Workstation Appliance Execution (Foot & MPV)
 echo "==> Test 8: Verifying Foot & MPV workstation appliances..."
 if [[ "$CAN_RUN_QEMU" = true ]]; then
-    FOOT_LOG=$(./cartilage run recipes/terminal-foot.yaml --test 2>&1 || true)
+    FOOT_LOG=$(./kurogane run recipes/terminal-foot.yaml --test 2>&1 || true)
     if echo "$FOOT_LOG" | grep -Eq "foot|TEST-PASS|Appliance verification completed"; then
         log_pass "Foot terminal appliance passed boot verification"
     else
         log_fail "Foot terminal appliance failed verification"
     fi
 
-    MPV_LOG=$(./cartilage run recipes/media-mpv.yaml --test 2>&1 || true)
+    MPV_LOG=$(./kurogane run recipes/media-mpv.yaml --test 2>&1 || true)
     if echo "$MPV_LOG" | grep -Eq "mpv|TEST-PASS|Appliance verification completed"; then
         log_pass "MPV multimedia appliance passed boot verification"
     else
         log_fail "MPV multimedia appliance failed verification"
     fi
 
-    VLC_LOG=$(./cartilage run recipes/media-vlc.yaml --test 2>&1 || true)
+    VLC_LOG=$(./kurogane run recipes/media-vlc.yaml --test 2>&1 || true)
     if echo "$VLC_LOG" | grep -Eq "vlc|TEST-PASS|Appliance verification completed"; then
         log_pass "VLC media player appliance passed boot verification"
     else
@@ -140,16 +140,16 @@ fi
 
 # Test 9: Mode 2 Dynamic Hub Initializer Dry-Run (Task 11)
 echo "==> Test 9: Testing Dynamic Hub initializer in dry-run mode..."
-if ./cartilage init-hub --dry-run /dev/null | grep -q "DRY RUN SUCCESS"; then
-    log_pass "cartilage init-hub --dry-run /dev/null calculated partition layout and payload structure"
+if ./kurogane init-hub --dry-run /dev/null | grep -q "DRY RUN SUCCESS"; then
+    log_pass "kurogane init-hub --dry-run /dev/null calculated partition layout and payload structure"
 else
-    log_fail "cartilage init-hub dry-run failed"
+    log_fail "kurogane init-hub dry-run failed"
 fi
 
 # Test 10: Developer Workstation Duo with dwl (Task 13)
 echo "==> Test 10: Verifying Developer Workstation Duo (Foot + Browser on dwl)..."
 if [[ "$CAN_RUN_QEMU" = true ]]; then
-    WORKSTATION_LOG=$(./cartilage run recipes/experimental/workstation-dev.yaml --test 2>&1 || true)
+    WORKSTATION_LOG=$(./kurogane run recipes/experimental/workstation-dev.yaml --test 2>&1 || true)
     if echo "$WORKSTATION_LOG" | grep -Eq "workstation-session|dwl|TEST-PASS|Appliance verification completed"; then
         log_pass "Workstation Duo appliance passed boot verification on dwl compositor"
     else
@@ -161,8 +161,10 @@ fi
 
 # Test 11: Mode 2 Dynamic Hub UEFI Boot Verification (Task 12)
 echo "==> Test 11: Verifying Mode 2 Dynamic Hub image boot..."
-if [[ "$CAN_RUN_QEMU" = true ]] && [[ -f build/cartilage_hub.img ]]; then
-    HUB_LOG=$(./cartilage run build/cartilage_hub.img --test 2>&1 || true)
+if [[ "$CAN_RUN_QEMU" = true ]] && ([[ -f build/kurogane_hub.img ]] || [[ -f build/cartilage_hub.img ]]); then
+    HUB_IMG="build/kurogane_hub.img"
+    [[ -f "$HUB_IMG" ]] || HUB_IMG="build/cartilage_hub.img"
+    HUB_LOG=$(./kurogane run "$HUB_IMG" --test 2>&1 || true)
     if echo "$HUB_LOG" | grep -q "Found CARTRIDGES partition"; then
         log_pass "Dynamic Hub booted via UEFI, discovered exFAT CARTRIDGES, and loop-mounted appliance"
     else
@@ -175,7 +177,7 @@ fi
 # Test 12: i3-Style Workstation with Sway Compositor (Task 14)
 echo "==> Test 12: Verifying i3-Style Workstation (Foot + Dillo on Sway)..."
 if [[ "$CAN_RUN_QEMU" = true ]]; then
-    I3_LOG=$(./cartilage run recipes/experimental/workstation-i3.yaml --test 2>&1 || true)
+    I3_LOG=$(./kurogane run recipes/experimental/workstation-i3.yaml --test 2>&1 || true)
     if echo "$I3_LOG" | grep -Eq "sway|TEST-PASS|Appliance verification completed"; then
         log_pass "i3-Style Workstation appliance passed boot verification on sway compositor"
     else
@@ -188,7 +190,7 @@ fi
 # Test 13: Flagship Workstation-Full with Chromium, MPV, and Labwc
 echo "==> Test 13: Verifying Flagship Workstation-Full (Chromium + Foot + MPV on Labwc)..."
 if [[ "$CAN_RUN_QEMU" = true ]]; then
-    FULL_LOG=$(./cartilage run recipes/experimental/workstation-full.yaml --test 2>&1 || true)
+    FULL_LOG=$(./kurogane run recipes/experimental/workstation-full.yaml --test 2>&1 || true)
     if echo "$FULL_LOG" | grep -Eq "labwc|sway|TEST-PASS|Appliance verification completed"; then
         log_pass "Flagship Workstation-Full passed boot verification with Chromium and Labwc"
     else

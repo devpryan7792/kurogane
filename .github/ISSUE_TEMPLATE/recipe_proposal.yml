@@ -1,5 +1,5 @@
 name: 🎮 New Appliance Recipe Proposal
-description: Propose or share a new instant-on cartridge recipe for Cartilage OS
+description: Propose or share a new instant-on cartridge recipe for Kurogane OS
 title: "[Recipe]: <Appliance Name>"
 labels: ["recipe", "enhancement", "good first issue"]
 body:
@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for proposing a new appliance cartridge!
-        Cartilage appliances are instant-on, single-purpose, and unbrickable.
+        Kurogane appliances are instant-on, single-purpose, and unbrickable.
   - type: input
     id: app_name
     attributes:

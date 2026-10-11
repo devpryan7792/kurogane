@@ -19,13 +19,17 @@ KERNEL=""
 INITRD=""
 if [[ -f "${BUILD_DIR}/initramfs-linux.img" ]]; then
     INITRD="${BUILD_DIR}/initramfs-linux.img"
+elif [[ -f "/var/lib/kurogane/rootfs/boot/initramfs-linux.img" ]]; then
+    INITRD="/var/lib/kurogane/rootfs/boot/initramfs-linux.img"
 elif [[ -f "/var/lib/cartilage/rootfs/boot/initramfs-linux.img" ]]; then
     INITRD="/var/lib/cartilage/rootfs/boot/initramfs-linux.img"
 elif [[ -f "/boot/initramfs-linux.img" ]]; then
     INITRD="/boot/initramfs-linux.img"
 fi
 
-if [[ -f "/var/lib/cartilage/rootfs/boot/vmlinuz-linux" ]]; then
+if [[ -f "/var/lib/kurogane/rootfs/boot/vmlinuz-linux" ]]; then
+    KERNEL="/var/lib/kurogane/rootfs/boot/vmlinuz-linux"
+elif [[ -f "/var/lib/cartilage/rootfs/boot/vmlinuz-linux" ]]; then
     KERNEL="/var/lib/cartilage/rootfs/boot/vmlinuz-linux"
 elif [[ -f "/boot/vmlinuz-linux" ]]; then
     KERNEL="/boot/vmlinuz-linux"
@@ -49,7 +53,7 @@ fi
 TARGET_URL="${1:-https://duckduckgo.com}"
 
 echo "============================================================"
-echo "Starting Cartilage OS — Chromium Desktop Web Browser"
+echo "Starting Kurogane OS — Chromium Desktop Web Browser"
 echo "Runtime: Chromium Ozone Wayland on Cage Compositor"
 echo "Start URL: ${TARGET_URL}"
 echo "Network: virtio-net with automatic DHCP"
