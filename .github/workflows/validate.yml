@@ -20,9 +20,8 @@ jobs:
 
       - name: Verify Python Compilation & Imports
         run: |
-          python3 -m py_compile src/kurogane/*.py src/cartilage/*.py
+          python3 -m py_compile src/kurogane/*.py
           PYTHONPATH=src python3 -c "import sys, kurogane; from kurogane import cli, builder, composer, flasher, runner, schema, yaml; print('All Kurogane modules imported successfully on Python ' + sys.version)"
-          PYTHONPATH=src python3 -c "import sys, cartilage; from cartilage import cli, builder, composer, flasher, runner, schema, yaml; print('Cartilage compatibility shim imported successfully on Python ' + sys.version)"
 
       - name: Validate Recipe Manifests
         run: |

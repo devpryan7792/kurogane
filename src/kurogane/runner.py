@@ -68,6 +68,7 @@ def run_appliance(
     verbose: bool = False,
     compositor: Optional[str] = None,
     accel: bool = False,
+    force_software_render: bool = False,
 ) -> int:
 
     """Launch an appliance in QEMU based on recipe or image."""
@@ -151,7 +152,10 @@ def run_appliance(
     qemu_cmd.extend(["-m", ram, "-smp", str(cores)])
 
     # Display & Graphics: enable hardware 3D acceleration or reliable virtio-vga & zoom-to-fit
-    if accel_mode == "software":
+    if force_software_render:
+        accel_mode = "software"
+        use_virgl = False
+    elif accel_mode == "software":
         use_virgl = False
     else:
         use_virgl = False if test_mode else (accel or (accel_mode in ("virtio-gpu", "intel", "amd")) or (os.environ.get("CARTILAGE_VIRGL", "0") == "1"))
@@ -253,6 +257,9 @@ def run_appliance(
             cmdline_parts.append(f"cartilage_mode={disp_mode}")
         if use_virgl:
             cmdline_parts.append("cartilage_virgl=1")
+        if force_software_render:
+            cmdline_parts.append("cartilage_software_render=1")
+            cmdline_parts.append("WLR_RENDERER=pixman")
         if test_mode:
             if not extra_cmdline or "cartilage_test=" not in extra_cmdline:
                 cmdline_parts.append("cartilage_test=verify_app")

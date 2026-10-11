@@ -166,3 +166,151 @@ Pass = Validates single-app vs multi-app compositor constraints.
 ```
 Pass = Image compiles rootlessly and boots to interactive i3 session.
 
+---
+
+## Part 5: Kurogane v3.x Acceptance Specification (Bare-Metal Systems Hardening)
+
+### Task 16 — Single-Threaded `signalfd` & `epoll` Core
+**Done when:**
+- PID 1 operates strictly as a single OS thread (`/proc/$$/status` verifies `Threads: 1`).
+- All standard Unix signals (`SIGCHLD`, `SIGTERM`, `SIGINT`, `SIGPWR`) are masked via `sigprocmask` and routed exclusively through `signalfd(2)`.
+- Main event loop dispatches events via single-threaded `epoll_wait(2)`.
+- Child process exits (`SIGCHLD`) are drained via non-blocking `waitpid(-1, &status, WNOHANG)`.
+- Critical signal dispatch paths execute with zero dynamic heap allocations.
+
+**Test command:**
+```bash
+cargo test --package kurogane-init --test event_core_tests
+```
+Pass = All signalfd events, zombie reaping, and single-thread invariants pass with 0 errors.
+
+---
+
+### Task 17 — Non-Blocking `timerfd` Heartbeat & DRM Watchdog
+**Done when:**
+- DRM card lock release polling and supervisor timeouts use `timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK)`.
+- Zero blocking `std::thread::sleep` calls exist anywhere in `crates/kurogane-init`.
+- Event loop resumes within 1ms of timer expiration and handles hardware timeouts gracefully.
+
+**Test command:**
+```bash
+cargo test --package kurogane-init --test timerfd_tests
+```
+Pass = Timers fire cleanly inside epoll; timeout fallbacks execute without blocking.
+
+---
+
+### Task 18 — Wayland Wire Protocol Header & Framing Parser
+**Done when:**
+- Parser decodes 8-byte Wayland message headers (`object_id: u32`, `opcode: u16`, `size: u16`) from raw byte buffers.
+- Streaming circular buffer handles fragmented packets across arbitrary socket chunk boundaries.
+- Zero heap allocations during standard message framing traversal.
+
+**Test command:**
+```bash
+cargo test --package kurogane-init --test wayland_wire_tests
+```
+Pass = Decodes simulated Wayland stream slices (single, fragmented, coalesced) with 100% fidelity.
+
+---
+
+### Task 19 — Active Wayland Capability Stripping
+**Done when:**
+- Proxy intercepts incoming compositor `wl_registry::global` announcements.
+- Detects strings `"wlr_screencopy_v1"`, `"zwp_virtual_keyboard_v1"`, and `"ext_data_control_v1"`.
+- Suppresses blacklisted announcements and recalculates message lengths dynamically.
+- Client receives sanitized registry stream with zero sensitive capabilities advertised.
+
+**Test command:**
+```bash
+python3 tests/verification/test_wayland_filter_wire.py
+```
+Pass = Client `wl_registry` query returns standard interfaces but omits screencopy/virtual-keyboard.
+
+---
+
+### Task 20 — Wayland Object ID Coherency & `splice()` Handoff
+**Done when:**
+- Proxy tracks active interface object ID bindings to preserve numerical stream coherency.
+- Sealing handshake: upon initial registry bind completion, proxy transitions sockets to zero-copy kernel `splice(2)` pipe relay.
+- Throughput overhead of proxy relay is measured at <15 µs per frame.
+
+**Test command:**
+```bash
+python3 tests/verification/test_wayland_handoff_bench.py
+```
+Pass = Bidirectional relay maintains 60 FPS graphics stream with <15 µs latency overhead.
+
+---
+
+### Task 21 — Seccomp-BPF Automated Whitelist Confinement
+**Done when:**
+- Supervisor compiles and loads strict BPF filter before executing cartridge payload.
+- Whitelist allows only essential graphical/runtime syscalls (~50 standard syscalls).
+- Any attempt to invoke `ptrace`, `bpf`, `io_uring`, `keyctl`, or `reboot` immediately aborts process with `SECCOMP_RET_KILL_PROCESS`.
+- Authorized applications (`foot`, `mpv`) boot and run with zero syscall violations.
+
+**Test command:**
+```bash
+./tests/verification/test_seccomp_confinement.sh
+```
+Pass = Disallowed syscalls result in instant process termination; approved apps run normally.
+
+---
+
+### Task 22 — Landlock LSM & User Namespace Sandbox
+**Done when:**
+- Landlock ruleset restricts filesystem access exclusively to `/data` and immutable cartridge paths.
+- Unprivileged user namespace (`CLONE_NEWUSER`) drops all host root capabilities.
+- Attempts to access host devices or write outside `/data` fail with `EACCES` or `EPERM`.
+
+**Test command:**
+```bash
+./tests/verification/test_landlock_sandbox.sh
+```
+Pass = Host filesystem access blocked; unprivileged user isolation verified.
+
+---
+
+### Task 23 — Storage Journaling & Atomic Write Guarantees
+**Done when:**
+- Persistent `/data` volume is mounted with `data=journal` (ext4) or atomic write semantics (F2FS).
+- Micro-Supervisor executes explicit `syncfs` synchronization before unmounting.
+- Partial writes never leave half-written corrupt metadata states.
+
+**Test command:**
+```bash
+python3 tests/verification/test_atomic_storage.py
+```
+Pass = Atomic write invariants and journal metadata integrity validated.
+
+---
+
+### Task 24 — QEMU Chaos & Power-Cut "Yank" Test
+**Done when:**
+- Automated chaos test executes sustained high-frequency file writes in QEMU guest.
+- Chaos harness fires random host `kill -9` on QEMU process or guest `echo c > /proc/sysrq-trigger`.
+- Subsequent boot automatically replays journal in <100ms via `fsck -p`.
+- Zero unrecoverable filesystem corruption across 20 consecutive power-cut cycles.
+
+**Test command:**
+```bash
+./scripts/test_power_cut_chaos.sh --iterations 20
+```
+Pass = 20/20 power-cut recovery cycles succeed with 0 filesystem corruption errors.
+
+---
+
+### Task 25 — Multi-GPU Bare-Metal DRM & Pixman Fallback
+**Done when:**
+- Micro-Supervisor interrogates available DRM render nodes and monitors modesetting status.
+- If hardware acceleration or firmware blobs fail, supervisor dynamically selects `WLR_RENDERER=pixman` CPU rendering.
+- System transitions to graphical desktop without frozen consoles or screen flashing.
+
+**Test command:**
+```bash
+./cartilage run recipes/terminal-foot.yaml --test --force-software-render
+```
+Pass = Clean boot and Wayland display socket initialization with CPU software renderer fallback.
+
+

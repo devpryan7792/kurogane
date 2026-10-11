@@ -1,0 +1,112 @@
+name: Kurogane CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  rust-core:
+    name: Rust Micro-Supervisor & Wire Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cargo Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            crates/kurogane-init/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('crates/kurogane-init/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Cargo Format Check
+        run: cargo fmt --manifest-path crates/kurogane-init/Cargo.toml -- --check
+
+      - name: Cargo Clippy (-D warnings)
+        run: cargo clippy --manifest-path crates/kurogane-init/Cargo.toml --all-targets -- -D warnings
+
+      - name: Cargo Test Suite & Property Verification (Proptest 500 cases)
+        run: cargo test --manifest-path crates/kurogane-init/Cargo.toml --all-targets -- --nocapture
+
+  python-unit:
+    name: Python Package Unit & Property Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Test Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest hypothesis
+
+      - name: Byte-compile and Import Verification
+        run: |
+          python3 -m py_compile src/kurogane/*.py
+          PYTHONPATH=src python3 -c "import sys, kurogane; from kurogane import cli, builder, composer, flasher, runner, schema, yaml; print('All Kurogane modules imported successfully on Python ' + sys.version)"
+
+      - name: Run Unit Tests
+        run: |
+          PYTHONPATH=src pytest tests/unit/ -v
+
+      - name: Validate All Recipe Manifests
+        run: |
+          chmod +x ./kurogane ./cartilage
+          ./kurogane validate recipes/*.yaml recipes/experimental/*.yaml
+          ./cartilage validate recipes/terminal-foot.yaml
+
+  systems-sandbox:
+    name: Systems Sandbox & CLI Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Toolchain & Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libseccomp-dev uidmap
+          pip install pytest
+
+      - name: Compile kurogane-init Release Binary
+        uses: dtolnay/rust-toolchain@stable
+      - run: |
+          cargo build --release --manifest-path crates/kurogane-init/Cargo.toml
+
+      - name: Run CLI Contract Verification
+        run: |
+          chmod +x scripts/15_test_cartilage_cli.sh
+          ./scripts/15_test_cartilage_cli.sh
+
+      - name: Run User Namespace & Seccomp Harness
+        run: |
+          chmod +x tests/verification/test_userns_containment.sh
+          chmod +x tests/verification/test_seccomp_confinement.sh
+          ./tests/verification/test_userns_containment.sh
+          ./tests/verification/test_seccomp_confinement.sh

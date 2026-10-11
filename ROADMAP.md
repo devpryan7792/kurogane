@@ -117,3 +117,74 @@ This document outlines the evolutionary phases of Cartilage OS, tracking complet
 - [ ] Early-userspace dialog/curses configuration menu for Mode 2 Dynamic Hub.
 - [ ] Wi-Fi network selection and persistent credential storage in `/data`.
 
+---
+
+## Phase 7: Kurogane v3.x — Bare-Metal Production Hardening (The 16-Week Part-Time Master Plan)
+*Goal: Evolve Kurogane from a functional prototype into an MIT/Google-grade, fault-tolerant, power-cut-resilient appliance operating system.*
+*Pacing: 10–14 hours/week (Weekend Sprints of 6–8h + 1–2 Evening Sprints of 2–3h).*
+
+### Milestone 1: The Zero-Thread Event Core (PID 1 Hardening) [Weeks 1–3]
+*Pacing: ~35 engineering hours*
+- [ ] **Week 1 (Types & Signal Interface)**:
+  - Mask all standard signals (`sigprocmask(SIG_BLOCK, ...)`) in PID 1 before any thread/process spawn.
+  - Implement `signalfd(2)` binding to read `SIGCHLD`, `SIGTERM`, `SIGINT`, `SIGPWR` as structured byte streams.
+  - Define non-blocking `EventLoop` struct wrapping single-threaded `epoll(7)`.
+- [ ] **Week 2 (Non-Blocking Child & Timer Supervision)**:
+  - Implement non-blocking `waitpid(-1, WNOHANG)` zombie reaper in main epoll loop to eliminate child process accumulation.
+  - Integrate `timerfd_create(2)` into epoll loop for heartbeat polling, DRM release timeouts, and watchdog checks without `thread::sleep`.
+- [ ] **Week 3 (Zero-Allocation Guarantee & Verification)**:
+  - Audit critical signal handling paths to ensure zero dynamic heap allocations (`malloc`/`Box::new`/`Vec::new`).
+  - Unit & integration tests in `crates/kurogane-init`: simulate synthetic `SIGCHLD` bursts, verify zero PID 1 deadlocks.
+
+### Milestone 2: Stateful Wayland Wire Inspector [Weeks 4–7]
+*Pacing: ~45 engineering hours*
+- [ ] **Week 4 (Binary Wire Framer & Parser)**:
+  - Implement zero-allocation parser for 8-byte Wayland message header: `[u32: object_id][u16: opcode][u16: size]`.
+  - Implement streaming buffer to handle fragmented packets and Unix domain socket chunk boundaries.
+- [ ] **Week 5 (Registry Globals Filtering)**:
+  - Intercept initial compositor `wl_registry::global` announcements.
+  - Parse interface names and filter out sensitive capabilities (`wlr_screencopy_v1`, `zwp_virtual_keyboard_v1`, `ext_data_control_v1`).
+  - Drop or suppress blacklisted global announcements while recalculating packet lengths on the fly.
+- [ ] **Week 6 (Object ID Coherency & State Tracking)**:
+  - Implement stateful object ID translation table to prevent client desynchronization on filtered interfaces.
+  - Ensure client requests for non-advertised globals cleanly return protocol errors or are silently dropped without socket termination.
+- [ ] **Week 7 (Zero-Copy Handshake Handoff & Security Benchmarking)**:
+  - Detect completion of registry bind phase; seal the state machine and transition client/compositor sockets to zero-copy `splice()` pipe relays.
+  - Benchmark proxy forwarding latency (target: <15 µs overhead on Wayland render loop).
+
+### Milestone 3: Defense-in-Depth Confinement (Seccomp-BPF + Landlock) [Weeks 8–10]
+*Pacing: ~35 engineering hours*
+- [ ] **Week 8 (Syscall Profiling & BPF Whitelist Engine)**:
+  - Profile system call requirements for appliance fleet (`foot`, `mpv`, `chromium`).
+  - Implement recipe-driven BPF program generator compiling strict syscall whitelists (~50 allowable calls; strictly denying `ptrace`, `keyctl`, `bpf`, `io_uring`, `reboot`).
+- [ ] **Week 9 (Landlock LSM Path Restrictions)**:
+  - Apply Landlock ruleset before dropping root: restrict filesystem reads/writes strictly to `/data` and app assets, blocking transversal to host mounts.
+  - Configure unprivileged user namespace mapping (`CLONE_NEWUSER`) to strip root capabilities inside the cartridge sandbox.
+- [ ] **Week 10 (Adversarial Security Audit)**:
+  - Automated test harness attempting unauthorized syscalls and verifying instant `SECCOMP_RET_KILL_PROCESS` termination.
+
+### Milestone 4: Power-Loss Atomicity (The "Yank" Test) [Weeks 11–13]
+*Pacing: ~35 engineering hours*
+- [ ] **Week 11 (Journaling Persistence Policy)**:
+  - Configure persistent `/data` format with `data=journal` or F2FS atomic write semantics.
+  - Implement atomic save protocol in supervisor: sync barriers before unmounting.
+- [ ] **Week 12 (QEMU Chaos & Power-Cut Harness)**:
+  - Build automated chaos testing harness: execute continuous disk write cycles while firing random QEMU `SIGKILL` or `echo c > /proc/sysrq-trigger`.
+  - Measure filesystem integrity, journal playback latency, and orphaned inode recovery on next cold boot.
+- [ ] **Week 13 (Corrupt Storage Self-Healing)**:
+  - Implement automated `fsck` self-healing in supervisor with zero interactive prompts (`fsck -p`).
+  - Fall back to clean temporary overlay if persistent storage is physically unrecoverable.
+
+### Milestone 5: Bare-Metal Silicon & Appliance Monograph [Weeks 14–16]
+*Pacing: ~35 engineering hours*
+- [ ] **Week 14 (Multi-GPU Hardware Matrix)**:
+  - Test physical USB 3.0 boots on real hardware (Intel UHD/Iris, AMD APUs, discrete GPU machines).
+  - Implement automated fallback to Pixman CPU renderer when DRM modesetting or firmware blobs fail.
+- [ ] **Week 15 (Hardware Seat & Audio Arbitrator)**:
+  - Harden `seatd` input device arbitration; handle non-crashing VT switches (`Ctrl+Alt+F2` -> `F1`).
+  - Polish ALSA `dmix` multi-stream multiplexing across physical headphone and HDMI audio jacks.
+- [ ] **Week 16 (Release Packaging & Systems Monograph)**:
+  - Tag Kurogane v3.0 Production Release.
+  - Publish the comprehensive systems architecture whitepaper / technical monograph.
+
+

@@ -260,9 +260,14 @@ def build_appliance(
             if display_entry in ("/usr/bin/sway", "/usr/bin/workstation-session") or not os.path.exists(os.path.join(staging_dir, display_entry.lstrip("/"))):
                 display_entry = "/usr/bin/sway"
 
-        # Step 3: Install modular stage runner
-        print("[3/5] Installing modular /init and /init.d/ stages...")
-        shutil.copy2(os.path.join(stages_dir, "init"), os.path.join(staging_dir, "init"))
+        # Step 3: Inject Rust kurogane-init
+        print("[3/5] Compiling and Installing Rust kurogane-init as /init...")
+        
+        init_crate = os.path.join(repo_root, "crates", "kurogane-init")
+        subprocess.run(["cargo", "build", "--release"], cwd=init_crate, check=True)
+        
+        compiled_bin = os.path.join(init_crate, "target", "release", "kurogane-init")
+        shutil.copy2(compiled_bin, os.path.join(staging_dir, "init"))
         os.chmod(os.path.join(staging_dir, "init"), 0o755)
 
         session_script = os.path.join(stages_dir, "workstation-session")
@@ -271,12 +276,7 @@ def build_appliance(
             shutil.copy2(session_script, dest_session)
             os.chmod(dest_session, 0o755)
 
-        init_d = os.path.join(staging_dir, "init.d")
-        os.makedirs(init_d, exist_ok=True)
-        for stage_file in glob.glob(os.path.join(stages_dir, "*.sh")):
-            dest = os.path.join(init_d, os.path.basename(stage_file))
-            shutil.copy2(stage_file, dest)
-            os.chmod(dest, 0o755)
+        # Note: We skip copying *.sh stages since we're using the monolithic Rust Micro-Supervisor
 
         # Step 4: Configure appliance entrypoint and system symlinks
         print("[4/5] Baking configuration & system symlinks...")

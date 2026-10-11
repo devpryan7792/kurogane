@@ -52,4 +52,11 @@ AGENTS.md
 AGENT_TASKS.md
 walkthrough.md
 
+# Archived legacy code and drafts
+archive/
+
+# Rust build artifacts
+target/
+**/target/
+
 

@@ -42,7 +42,7 @@ fi
 
 # Test 2: Unified CLI Help & Module Entrypoint (Task 17)
 echo "==> Test 2: Checking CLI execution (kurogane --help, python3 -m kurogane, and cartilage shim)..."
-if ./kurogane --help >/dev/null && python3 -m kurogane --help >/dev/null && ./cartilage --help >/dev/null && python3 -m cartilage --help >/dev/null; then
+if ./kurogane --help >/dev/null && PYTHONPATH=src python3 -m kurogane --help >/dev/null && ./cartilage --help >/dev/null && PYTHONPATH=src python3 -m cartilage --help >/dev/null; then
     log_pass "Unified kurogane and cartilage CLIs and module entrypoints pass --help"
 else
     log_fail "CLI --help failed"
@@ -61,8 +61,8 @@ echo "==> Test 4: Testing schema rejection on invalid manifest..."
 INVALID_OUTPUT=$(python3 -c '
 import sys
 sys.path.insert(0, "src")
-import cartilage.yaml as yaml
-import cartilage.schema as schema
+import kurogane.yaml as yaml
+import kurogane.schema as schema
 bad_data = yaml.loads("appliance:\n  name: INVALID NAME\n  version: 1.0\nruntime:\n  engine: ubuntu\n")
 try:
     schema.validate_manifest(bad_data)
@@ -96,10 +96,10 @@ fi
 
 # Test 7: Universal ALSA dmix Platform Configuration
 echo "==> Test 7: Checking universal ALSA dmix configuration in hardware stage..."
-if grep -q "pcm.dmixer" stages/10-hardware.sh && grep -q "type dmix" stages/10-hardware.sh; then
-    log_pass "Universal ALSA multi-stream dmix multiplexing is configured in stages/10-hardware.sh"
+if grep -q "pcm.dmixer" crates/kurogane-init/src/main.rs && grep -q "type dmix" crates/kurogane-init/src/main.rs; then
+    log_pass "Universal ALSA multi-stream dmix multiplexing is configured in crates/kurogane-init/src/main.rs"
 else
-    log_fail "Universal ALSA dmix configuration missing from stages/10-hardware.sh"
+    log_fail "Universal ALSA dmix configuration missing from crates/kurogane-init/src/main.rs"
 fi
 
 # Test 8: New Workstation Appliance Execution (Foot & MPV)
