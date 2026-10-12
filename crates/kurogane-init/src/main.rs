@@ -300,12 +300,22 @@ pub fn execution() -> Result<(), KuroganeError> {
             "/run/user/1000/wayland-0",
             "/run/user/1000/wayland-internal",
         ]);
-        proxy_cmd.env("XDG_RUNTIME_DIR", "/run/user/1000");
         unsafe {
             proxy_cmd.pre_exec(|| {
-                let _ = libc::setgroups(0, std::ptr::null());
-                let _ = libc::setgid(1000);
-                let _ = libc::setuid(1000);
+                if libc::geteuid() == 0 {
+                    if libc::setgroups(0, std::ptr::null()) != 0 {
+                        libc::_exit(125);
+                    }
+                    if libc::setgid(1000) != 0 {
+                        libc::_exit(124);
+                    }
+                    if libc::setuid(1000) != 0 {
+                        libc::_exit(123);
+                    }
+                }
+                if libc::geteuid() == 0 || libc::getuid() == 0 {
+                    libc::_exit(122);
+                }
                 Ok(())
             });
         }
@@ -371,9 +381,9 @@ pub fn execution() -> Result<(), KuroganeError> {
         child_pid
     );
 
-    // Single-threaded signal supervisor loop in PID 1 (Anti-Void supervisor)
+    // Single-threaded reactive signal supervisor loop in PID 1 (Zero-poll, true O(1) reactor)
     'event_loop: loop {
-        let triggered = event_loop.poll_events(100)?;
+        let triggered = event_loop.poll_indefinite()?;
 
         for token in triggered {
             if token == event_loop::TOKEN_SIGNAL {
@@ -405,14 +415,15 @@ pub fn execution() -> Result<(), KuroganeError> {
                         _ => {}
                     }
                 }
-            }
-        }
 
-        // Always drain arbitrary orphaned zombies non-blockingly
-        let reaped = event_loop::EventLoop::reap_zombies();
-        for (pid, _) in reaped {
-            if pid == child_pid || Some(pid) == proxy_pid {
-                break 'event_loop;
+                // Drain all orphaned zombies non-blockingly upon signal notification
+                // (handles POSIX signal coalescing where multiple children exit concurrently)
+                let reaped = event_loop::EventLoop::reap_zombies();
+                for (pid, _) in reaped {
+                    if pid == child_pid || Some(pid) == proxy_pid {
+                        break 'event_loop;
+                    }
+                }
             }
         }
     }
@@ -452,20 +463,39 @@ pub fn spawn_sandboxed_appliance(
 
     unsafe {
         cmd.pre_exec(move || {
-            // 1. Raw stack Landlock application (zero heap allocations)
+            // 1. Raw stack Landlock application (zero heap allocations, fail-closed on rejection)
             let rw_ptrs = [
                 data_ptr as *const libc::c_char,
                 run_ptr as *const libc::c_char,
             ];
-            let _ = sandbox::apply_landlock_sandbox_raw(&rw_ptrs);
+            let landlock_res = sandbox::apply_landlock_sandbox_raw(&rw_ptrs);
+            if landlock_res < 0 {
+                libc::_exit(127);
+            }
 
-            // 2. Raw stack Seccomp BPF installation (zero heap allocations)
-            let _ = seccomp::apply_seccomp_filter_raw(filter_slice);
+            // 2. Raw stack Seccomp BPF installation (zero heap allocations, fail-closed)
+            let seccomp_res = seccomp::apply_seccomp_filter_raw(filter_slice);
+            if seccomp_res != 0 {
+                libc::_exit(126);
+            }
 
-            // 3. Drop root privileges to unprivileged UID/GID 1000 via async-signal-safe syscalls
-            let _ = libc::setgroups(0, std::ptr::null());
-            let _ = libc::setgid(1000);
-            let _ = libc::setuid(1000);
+            // 3. Drop root privileges to unprivileged UID/GID 1000 via async-signal-safe syscalls (fail-closed)
+            if libc::geteuid() == 0 {
+                if libc::setgroups(0, std::ptr::null()) != 0 {
+                    libc::_exit(125);
+                }
+                if libc::setgid(1000) != 0 {
+                    libc::_exit(124);
+                }
+                if libc::setuid(1000) != 0 {
+                    libc::_exit(123);
+                }
+            }
+
+            // 4. Invariant assertion: Child MUST NEVER execute payload retaining UID 0
+            if libc::geteuid() == 0 || libc::getuid() == 0 {
+                libc::_exit(122);
+            }
 
             Ok(())
         });

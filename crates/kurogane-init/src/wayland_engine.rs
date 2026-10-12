@@ -98,7 +98,24 @@ pub enum WaylandInterface {
     LinuxDmabuf,
     LinuxBufferParams,
     LinuxDmabufFeedback,
+    LinuxDrmSyncobj,
+    WlrExportDmabuf,
+    WlrScreencopy,
+    XdgWmBase,
     Unknown,
+}
+
+/// SCM_RIGHTS FD expectation policy for frame extraction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FdExpectation {
+    Exact(usize),
+    Unknown,
+}
+
+impl From<usize> for FdExpectation {
+    fn from(n: usize) -> Self {
+        FdExpectation::Exact(n)
+    }
 }
 
 /// Parses the payload of wl_registry.bind request:
@@ -185,30 +202,52 @@ impl ClientSession {
         obj_id: u32,
         opcode: u16,
         is_server_to_client: bool,
-    ) -> usize {
+    ) -> FdExpectation {
         let iface = interfaces
             .get(&obj_id)
             .copied()
             .unwrap_or(WaylandInterface::Unknown);
         match (iface, opcode, is_server_to_client) {
-            // Server to Client:
+            // Server to Client (Known 1 FD):
             // wl_keyboard.keymap: opcode 0 -> 1 FD
-            (WaylandInterface::Keyboard, 0, true) => 1,
+            (WaylandInterface::Keyboard, 0, true) => FdExpectation::Exact(1),
             // wl_data_source.send: opcode 0 -> 1 FD
-            (WaylandInterface::DataSource, 0, true) => 1,
+            (WaylandInterface::DataSource, 0, true) => FdExpectation::Exact(1),
             // zwp_linux_dmabuf_feedback_v1.format_table: opcode 0 -> 1 FD
-            (WaylandInterface::LinuxDmabufFeedback, 0, true) => 1,
+            (WaylandInterface::LinuxDmabufFeedback, 0, true) => FdExpectation::Exact(1),
+            // wp_linux_drm_syncobj_manager_v1: timeline sync FD events
+            (WaylandInterface::LinuxDrmSyncobj, _, true) => FdExpectation::Exact(1),
+            // zwlr_export_dmabuf_frame_v1.frame: opcode 0 -> 1 FD
+            (WaylandInterface::WlrExportDmabuf, 0, true) => FdExpectation::Exact(1),
 
-            // Client to Server:
+            // Client to Server (Known 1 FD):
             // wl_shm.create_pool: opcode 0 -> 1 FD
-            (WaylandInterface::Shm, 0, false) => 1,
+            (WaylandInterface::Shm, 0, false) => FdExpectation::Exact(1),
             // wl_data_offer.receive: opcode 0 -> 1 FD
-            (WaylandInterface::DataOffer, 0, false) => 1,
+            (WaylandInterface::DataOffer, 0, false) => FdExpectation::Exact(1),
             // zwp_linux_buffer_params_v1.add: opcode 0 -> 1 FD
-            (WaylandInterface::LinuxBufferParams, 0, false) => 1,
+            (WaylandInterface::LinuxBufferParams, 0, false) => FdExpectation::Exact(1),
+            // wp_linux_drm_syncobj_manager_v1: imports timeline FD
+            (WaylandInterface::LinuxDrmSyncobj, _, false) => FdExpectation::Exact(1),
 
-            // All other messages in Wayland protocol consume 0 file descriptors.
-            _ => 0,
+            // Known zero-FD core interfaces:
+            (WaylandInterface::Display, _, _) => FdExpectation::Exact(0),
+            (WaylandInterface::Registry, _, _) => FdExpectation::Exact(0),
+            (WaylandInterface::Compositor, _, _) => FdExpectation::Exact(0),
+            (WaylandInterface::Subcompositor, _, _) => FdExpectation::Exact(0),
+            (WaylandInterface::Surface, _, _) => FdExpectation::Exact(0),
+            (WaylandInterface::Pointer, _, _) => FdExpectation::Exact(0),
+            (WaylandInterface::Touch, _, _) => FdExpectation::Exact(0),
+            (WaylandInterface::Seat, _, _) => FdExpectation::Exact(0),
+            (WaylandInterface::XdgWmBase, _, _) => FdExpectation::Exact(0),
+
+            // Known interfaces with zero FDs for non-FD opcodes:
+            (WaylandInterface::LinuxDmabuf, _, _) => FdExpectation::Exact(0),
+            (WaylandInterface::Keyboard, _, true) => FdExpectation::Exact(0),
+            (WaylandInterface::Shm, _, false) => FdExpectation::Exact(0),
+
+            // Unmodeled / unknown extension:
+            _ => FdExpectation::Unknown,
         }
     }
 
@@ -218,7 +257,15 @@ impl ClientSession {
         opcode: u16,
         is_server_to_client: bool,
     ) -> usize {
-        Self::resolve_expected_fds(&self.object_interfaces, obj_id, opcode, is_server_to_client)
+        match Self::resolve_expected_fds(
+            &self.object_interfaces,
+            obj_id,
+            opcode,
+            is_server_to_client,
+        ) {
+            FdExpectation::Exact(n) => n,
+            FdExpectation::Unknown => 0,
+        }
     }
 
     /// Read incoming bytes and SCM_RIGHTS file descriptors safely from a socket.
@@ -261,14 +308,16 @@ impl ClientSession {
     }
 
     /// Extracts complete frames from buffer without stripping or leaking fragmented streams.
-    /// File descriptors are assigned strictly according to schema expectation.
-    pub fn extract_frames<F>(
+    /// File descriptors are assigned strictly according to schema expectation, and unmodeled
+    /// extensions dynamically consume waiting FDs to prevent permanent stream desynchronization.
+    pub fn extract_frames<F, E>(
         buf: &mut Vec<u8>,
         fd_queue: &mut VecDeque<OwnedFd>,
         expected_fds_fn: F,
     ) -> Vec<WaylandFrame>
     where
-        F: Fn(u32, u16) -> usize,
+        F: Fn(u32, u16) -> E,
+        E: Into<FdExpectation>,
     {
         let mut frames = Vec::new();
 
@@ -290,7 +339,17 @@ impl ClientSession {
             }
 
             let frame_payload = buf.drain(..size).collect::<Vec<u8>>();
-            let expected_fds = expected_fds_fn(obj_id, opcode);
+            let expectation: FdExpectation = expected_fds_fn(obj_id, opcode).into();
+            let expected_fds = match expectation {
+                FdExpectation::Exact(n) => n,
+                FdExpectation::Unknown => {
+                    if !fd_queue.is_empty() {
+                        1
+                    } else {
+                        0
+                    }
+                }
+            };
             let mut frame_fds = Vec::with_capacity(expected_fds);
 
             for _ in 0..expected_fds {
@@ -387,6 +446,10 @@ impl ClientSession {
                         "wl_seat" => WaylandInterface::Seat,
                         "wl_data_device_manager" => WaylandInterface::DataDeviceManager,
                         "zwp_linux_dmabuf_v1" => WaylandInterface::LinuxDmabuf,
+                        "wp_linux_drm_syncobj_manager_v1" => WaylandInterface::LinuxDrmSyncobj,
+                        "zwlr_export_dmabuf_manager_v1" => WaylandInterface::WlrExportDmabuf,
+                        "zwlr_screencopy_manager_v1" => WaylandInterface::WlrScreencopy,
+                        "xdg_wm_base" => WaylandInterface::XdgWmBase,
                         _ => WaylandInterface::Unknown,
                     };
                     self.object_interfaces.insert(new_id, iface);

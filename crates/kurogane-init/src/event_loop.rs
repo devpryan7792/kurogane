@@ -124,15 +124,25 @@ impl EventLoop {
         reaped
     }
 
-    /// Waits for the next event with a non-blocking or bounded timeout.
-    pub fn poll_events(&mut self, timeout_ms: u16) -> Result<Vec<u64>, KuroganeError> {
-        let mut events = [EpollEvent::empty(); 16];
-        let timeout = EpollTimeout::from(timeout_ms);
+    /// Waits for the next event indefinitely without polling overhead (true event-driven O(1) wait).
+    pub fn poll_indefinite(&mut self) -> Result<Vec<u64>, KuroganeError> {
+        self.poll_timeout(EpollTimeout::NONE)
+    }
 
-        let n = self
-            .epoll
-            .wait(&mut events, timeout)
-            .map_err(|_| KuroganeError::HardwareError("epoll_wait failed"))?;
+    /// Waits for the next event with a bounded timeout in milliseconds.
+    pub fn poll_events(&mut self, timeout_ms: u16) -> Result<Vec<u64>, KuroganeError> {
+        self.poll_timeout(EpollTimeout::from(timeout_ms))
+    }
+
+    /// Waits for the next event using the specified EpollTimeout.
+    pub fn poll_timeout(&mut self, timeout: EpollTimeout) -> Result<Vec<u64>, KuroganeError> {
+        let mut events = [EpollEvent::empty(); 16];
+
+        let n = match self.epoll.wait(&mut events, timeout) {
+            Ok(n) => n,
+            Err(nix::errno::Errno::EINTR) => return Ok(Vec::new()),
+            Err(_) => return Err(KuroganeError::HardwareError("epoll_wait failed")),
+        };
 
         let mut triggered_tokens = Vec::with_capacity(n);
         for event in events.iter().take(n) {

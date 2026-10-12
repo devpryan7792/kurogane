@@ -142,20 +142,49 @@ impl DrmManager {
         Ok(())
     }
 
+    /// Native sysfs uevent coldplug trigger: walks /sys/bus and /sys/class triggering
+    /// synthetic kernel "add" uevents without spawning unmanaged external daemons (zero systemd-udevd).
+    pub fn trigger_sysfs_coldplug() {
+        if unsafe { libc::geteuid() != 0 } {
+            return;
+        }
+
+        fn trigger_dir(base: &Path) {
+            if let Ok(entries) = fs::read_dir(base) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        let uevent_file = p.join("uevent");
+                        if uevent_file.exists() {
+                            let _ = fs::write(&uevent_file, b"add\n");
+                        }
+                    }
+                }
+            }
+        }
+
+        let sys_bus = Path::new("/sys/bus");
+        if sys_bus.is_dir() {
+            if let Ok(busses) = fs::read_dir(sys_bus) {
+                for bus in busses.flatten() {
+                    let dev_dir = bus.path().join("devices");
+                    if dev_dir.is_dir() {
+                        trigger_dir(&dev_dir);
+                    }
+                }
+            }
+        }
+
+        let sys_class = Path::new("/sys/class");
+        if sys_class.is_dir() {
+            trigger_dir(sys_class);
+        }
+    }
+
     /// Primary entry point for State 3: Hardware Arbitration.
     pub fn arbitrate_hardware() -> Result<RendererChoice, KuroganeError> {
-        // Coldplug hardware devices via udev only if running as root (PID 1) and udev not already managing
-        if unsafe { libc::geteuid() == 0 } && !Path::new("/run/udev/control").exists() {
-            let _ = Command::new("systemd-udevd").arg("--daemon").status();
-            let _ = Command::new("udevadm")
-                .arg("trigger")
-                .arg("--action=add")
-                .status();
-            let _ = Command::new("udevadm")
-                .arg("settle")
-                .arg("--timeout=3")
-                .status();
-        }
+        // Coldplug hardware devices natively via kernel sysfs ABI (zero daemon dependencies)
+        Self::trigger_sysfs_coldplug();
 
         // Interrogate DRM & select rendering strategy
         let choice = Self::interrogate_drm();
@@ -191,5 +220,11 @@ mod tests {
         // Must never panic on any host system
         let choice = DrmManager::interrogate_drm();
         println!("Interrogated renderer choice: {:?}", choice);
+    }
+
+    #[test]
+    fn test_trigger_sysfs_coldplug_safety() {
+        // Must execute cleanly without panicking
+        DrmManager::trigger_sysfs_coldplug();
     }
 }

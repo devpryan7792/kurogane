@@ -15,7 +15,7 @@ Compiles desktop and kiosk workloads into read-only EROFS appliances with sub-2s
 
 <br />
 
-[Quickstart](#quickstart) • [Architecture](#architecture) • [Appliance Recipes](#appliance-recipes) • [Benchmarks](#benchmarks) • [Verification](#verification) • [Monograph](MONOGRAPH.md)
+[Quickstart](#quickstart) • [Architecture](#architecture) • [Appliance Recipes](#appliance-recipes) • [Benchmarks](#benchmarks) • [Verification](#verification)
 
 </div>
 
@@ -265,7 +265,6 @@ Kurogane uses a standards-compliant GPT partition scheme on USB or disk:
 
 ## Technical Documentation
 
-* [MONOGRAPH.md](MONOGRAPH.md) — Complete systems architecture and invariant specification
 * [SPEC.md](SPEC.md) — Formal specification (Tasks 1–25)
 * [ARCHITECTURE.md](ARCHITECTURE.md) — Micro-supervisor, VFS, and graphics proxy internals
 * [BENCHMARKS.md](BENCHMARKS.md) — Benchmarking methodology and raw test logs
