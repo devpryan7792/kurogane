@@ -1,0 +1,36 @@
+appliance:
+  name: media-cmus
+  version: "1.0.0"
+  description: "Distraction-free console music player over ALSA dmix"
+  author: "Community Contributor"
+
+runtime:
+  engine: arch
+  packages:
+    - cmus
+    - foot
+    - cage
+    - seatd
+    - alsa-utils
+  environment:
+    XDG_CURRENT_DESKTOP: Wayland
+
+display:
+  compositor: cage
+  mode: desktop
+  entrypoint: /usr/bin/foot
+  args:
+    - -e
+    - cmus
+
+storage:
+  mode: persistent
+  quota: 1024M
+  mount_point: /data
+
+hardware:
+  network: false
+  audio: true
+  acceleration: auto
+  memory: 512M
+  cores: 2

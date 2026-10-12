@@ -1,0 +1,31 @@
+name: "📦 Appliance Recipe Request"
+description: "Suggest a new tool or appliance recipe to add to Kurogane"
+title: "[Recipe Request]: <appliance-name>"
+labels: ["recipe", "good first issue", "help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a new appliance! Recipes are simple 25-line YAML files in `recipes/community/`.
+  - type: input
+    id: app_name
+    attributes:
+      label: Appliance Name
+      description: Name of the application or tool (e.g., Neovim, Wireshark, RetroArch).
+      placeholder: e.g. neovim
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What should this appliance do?
+      description: Describe why this would make a great dedicated, instant-on Linux appliance.
+      placeholder: "An instant-on Neovim terminal station with syntax highlighting and git..."
+    validations:
+      required: true
+  - type: input
+    id: packages
+    attributes:
+      label: Key Packages
+      description: What upstream packages are required (Arch or Alpine)?
+      placeholder: "e.g. neovim, foot, cage, git"

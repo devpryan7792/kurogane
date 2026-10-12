@@ -179,6 +179,10 @@ packages:
 | [`recipes/experimental/workstation-dev.yaml`](recipes/experimental/workstation-dev.yaml) | Arch | `dwl` | 290 MB | 656 MB | Dual-tag tiling station (Foot + Dillo) |
 | [`recipes/experimental/workstation-i3.yaml`](recipes/experimental/workstation-i3.yaml) | Arch | `sway` | 320 MB | 672 MB | i3-compatible tiling development workstation |
 
+### Community Recipe Catalog
+
+Anyone can contribute a single-purpose, instant-on Linux appliance in under 15 minutes! Check out [`recipes/community/`](recipes/community/) for community-contributed appliances (Helix, Cmus, WeeChat) and our [Starter Template](recipes/community/template.yaml).
+
 ---
 
 ## Benchmarks

@@ -1,0 +1,27 @@
+name: "🚀 Submit New Recipe (Pull Request Checklist)"
+description: "Guidelines and checklist before submitting a new recipe PR"
+title: "[New Recipe]: <appliance-name>"
+labels: ["recipe", "community"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for contributing a recipe! Please make sure your recipe:
+        1. Passes `./kurogane validate recipes/community/<name>.yaml`
+        2. Successfully boots in QEMU: `./kurogane run recipes/community/<name>.yaml`
+  - type: input
+    id: recipe_path
+    attributes:
+      label: Recipe File Path
+      placeholder: "recipes/community/editor-neovim.yaml"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Verification Checklist
+      options:
+        - label: "I tested the recipe with `./kurogane validate`"
+          required: true
+        - label: "I verified that the appliance starts into Wayland"
+          required: true

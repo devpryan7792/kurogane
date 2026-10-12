@@ -1,32 +1,26 @@
-name: 🐛 Bug Report
-description: Report an issue, build failure, or boot error in Kurogane OS
+name: "🐛 Bug Report"
+description: "Report a bug in the kurogane CLI, micro-supervisor, or an appliance"
 title: "[Bug]: "
 labels: ["bug"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Please report any issues you encounter when building or running Kurogane OS appliances.
-  - type: input
-    id: recipe_name
-    attributes:
-      label: Recipe or Command
-      description: Which recipe or CLI command produced the bug? (e.g. `recipes/terminal-foot.yaml`, `./kurogane build`)
-      placeholder: e.g. ./kurogane run recipes/terminal-foot.yaml
-    validations:
-      required: true
-  - type: textarea
-    id: environment
-    attributes:
-      label: Host Environment
-      description: Host OS distribution, kernel version, QEMU version.
-      placeholder: e.g. Arch Linux, Linux 6.12, QEMU 9.1
-    validations:
-      required: true
   - type: textarea
     id: description
     attributes:
-      label: Description & Logs
-      description: What happened? Please paste terminal output or serial console logs.
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
     validations:
       required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps or recipe used to reproduce the behavior.
+      placeholder: "1. ./kurogane run recipes/terminal-foot.yaml\n2. ..."
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Host Environment
+      description: Linux distribution and kernel version (`uname -r`).
+      placeholder: "Ubuntu 24.04, Linux 6.8.0-45-generic, x86_64"

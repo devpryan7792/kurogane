@@ -1,0 +1,35 @@
+appliance:
+  name: editor-helix
+  version: "1.0.0"
+  description: "Instant-on modern modal text editor on Wayland"
+  author: "Community Contributor"
+
+runtime:
+  engine: arch
+  packages:
+    - helix
+    - foot
+    - cage
+    - seatd
+  environment:
+    XDG_CURRENT_DESKTOP: Wayland
+
+display:
+  compositor: cage
+  mode: desktop
+  entrypoint: /usr/bin/foot
+  args:
+    - -e
+    - hx
+
+storage:
+  mode: persistent
+  quota: 512M
+  mount_point: /data
+
+hardware:
+  network: false
+  audio: false
+  acceleration: auto
+  memory: 1024M
+  cores: 2

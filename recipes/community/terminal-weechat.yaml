@@ -1,0 +1,35 @@
+appliance:
+  name: terminal-weechat
+  version: "1.0.0"
+  description: "Instant-on fast IRC and chat terminal"
+  author: "Community Contributor"
+
+runtime:
+  engine: arch
+  packages:
+    - weechat
+    - foot
+    - cage
+    - seatd
+  environment:
+    XDG_CURRENT_DESKTOP: Wayland
+
+display:
+  compositor: cage
+  mode: desktop
+  entrypoint: /usr/bin/foot
+  args:
+    - -e
+    - weechat
+
+storage:
+  mode: persistent
+  quota: 512M
+  mount_point: /data
+
+hardware:
+  network: true
+  audio: false
+  acceleration: auto
+  memory: 512M
+  cores: 2

@@ -1,0 +1,32 @@
+appliance:
+  name: app-name
+  version: "1.0.0"
+  description: "Description of your community appliance"
+  author: "Your Name <you@example.com>"
+
+runtime:
+  engine: arch
+  packages:
+    - foot
+    - cage
+    - seatd
+  environment:
+    XDG_CURRENT_DESKTOP: Wayland
+
+display:
+  compositor: cage
+  mode: desktop
+  entrypoint: /usr/bin/foot
+  args: []
+
+storage:
+  mode: persistent
+  quota: 256M
+  mount_point: /data
+
+hardware:
+  network: true
+  audio: false
+  acceleration: auto
+  memory: 1024M
+  cores: 2
