@@ -272,6 +272,7 @@ Kurogane uses a standards-compliant GPT partition scheme on USB or disk:
 * [SPEC.md](SPEC.md) — Formal specification (Tasks 1–25)
 * [ARCHITECTURE.md](ARCHITECTURE.md) — Micro-supervisor, VFS, and graphics proxy internals
 * [BENCHMARKS.md](BENCHMARKS.md) — Benchmarking methodology and raw test logs
+* [docs/FLASHING_GUIDE.md](docs/FLASHING_GUIDE.md) — Flash a Kurogane `.img` to a USB drive on macOS or Windows
 
 ---
 
