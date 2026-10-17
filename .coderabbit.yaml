@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+early_access: false
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "main"
+  path_instructions:
+    - path: "src/kurogane/**"
+      instructions: |
+        This is the appliance cartridge builder and CLI in Python.
+        Ensure all rootfs generation remains rootless, robust, and maintains
+        clean engine abstractions.
+    - path: "crates/kurogane-init/**"
+      instructions: |
+        This is the PID-1 micro-supervisor and Wayland proxy in Rust.
+        Ensure fail-closed privilege invariants, non-blocking epoll,
+        zero-poll event loops, and safe signal handling.
+    - path: "recipes/**"
+      instructions: |
+        These are appliance YAML manifests. Validate schema compliance
+        and sanity of hardware/display parameters.
+
+chat:
+  auto_reply: true
